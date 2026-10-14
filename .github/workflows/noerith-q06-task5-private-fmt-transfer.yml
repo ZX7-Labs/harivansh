@@ -1,0 +1,81 @@
+name: NOERITH Q06 Task5 encrypted private rustfmt patch
+
+on:
+  push:
+    branches:
+      - build/noerith-q06-task5-verify-20261014
+    paths:
+      - .github/workflows/noerith-q06-task5-private-fmt-transfer.yml
+
+permissions:
+  contents: read
+
+jobs:
+  private-rustfmt-patch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      TARGET_SHA: d8364f932f3b660d99a08d00313b3d491d9602c4
+    steps:
+      - name: Checkout source-free public verification relay
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Exact private read-only checkout
+        shell: bash
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Generate private pinned-rustfmt patch with no plaintext output
+        id: format
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          DIAG="${RUNNER_TEMP}/q06-task5-fmt-private"
+          mkdir -p "$DIAG"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          cd "$ROOT"
+          if ! rustup toolchain install 1.98.1 --profile minimal --component rustfmt --no-self-update >"$DIAG/toolchain.log" 2>&1; then
+            echo Q06_FMT_TOOLCHAIN=FAIL
+            exit 1
+          fi
+          if ! cargo +1.98.1 fmt --manifest-path tools/q06-memory-context-eval/Cargo.toml >"$DIAG/rustfmt.log" 2>&1; then
+            echo Q06_FMT_EXECUTION=FAIL
+            exit 1
+          fi
+          if ! git diff --check >"$DIAG/diff-check.log" 2>&1; then
+            echo Q06_FMT_DIFF_CHECK=FAIL
+            exit 1
+          fi
+          changed="$(git diff --name-only)"
+          if [ -z "$changed" ]; then
+            echo Q06_FMT_EMPTY_PATCH
+            exit 1
+          fi
+          if printf '%s\n' "$changed" | grep -vE '^tools/q06-memory-context-eval/(src/validator.rs|tests/validator.rs|tests/validator_severity_identity.rs)$' >/dev/null; then
+            echo Q06_FMT_UNEXPECTED_FILE_CHANGE
+            exit 1
+          fi
+          git diff --binary -- \
+            tools/q06-memory-context-eval/src/validator.rs \
+            tools/q06-memory-context-eval/tests/validator.rs \
+            tools/q06-memory-context-eval/tests/validator_severity_identity.rs \
+            >"$DIAG/canonical.patch"
+          test -s "$DIAG/canonical.patch"
+          echo Q06_PRIVATE_FMT_PATCH_READY
+          openssl cms -encrypt -binary -aes256 -outform DER \
+            -in "$DIAG/canonical.patch" \
+            -out "${RUNNER_TEMP}/q06-task5-fmt-private.cms" \
+            "${GITHUB_WORKSPACE}/certs/q06-task5-ephemeral-format-transfer.pem"
+          rm -rf "$DIAG"
+          echo Q06_FMT_CIPHERTEXT_ONLY=PASS
+      - name: Upload encrypted patch only
+        if: steps.format.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: q06-task5-format-patch-ciphertext
+          path: ${{ runner.temp }}/q06-task5-fmt-private.cms
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
