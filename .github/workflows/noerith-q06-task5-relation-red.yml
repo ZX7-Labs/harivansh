@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
-      TARGET_SHA: dc0ee1ef0a0e80f81c6874fef063aa895fca8738
+      TARGET_SHA: 807707a64a6588da4a033fedd80ffa8b42956ebf
     steps:
       - name: Checkout public source-free relay
         uses: actions/checkout@v4
@@ -39,12 +39,12 @@ jobs:
           rustup toolchain install 1.98.1 --profile minimal --no-self-update >"${RUNNER_TEMP}/q06-toolchain-private.log" 2>&1
           set +e
           cargo +1.98.1 test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked --test validator \
-            surface_paraphrase_sibling_cannot_be_a_distinct_value_bearing_history \
+            surface_paraphrase_cannot_change_the_typed_probe_kind \
             >"${RUNNER_TEMP}/q06-paraphrase-private.log" 2>&1
           result=$?
           set -e
           test "$result" -ne 0
-          grep -Fq 'test surface_paraphrase_sibling_cannot_be_a_distinct_value_bearing_history ... FAILED' "${RUNNER_TEMP}/q06-paraphrase-private.log"
+          grep -Fq 'test surface_paraphrase_cannot_change_the_typed_probe_kind ... FAILED' "${RUNNER_TEMP}/q06-paraphrase-private.log"
           grep -Fq 'test result: FAILED' "${RUNNER_TEMP}/q06-paraphrase-private.log"
           if grep -Eq 'error\[E[0-9]+\]|error: could not compile' "${RUNNER_TEMP}/q06-paraphrase-private.log"; then
             echo Q06_RELATION_ASSERTION_NOT_EXECUTED
