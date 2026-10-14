@@ -1,0 +1,58 @@
+name: NOERITH Q06 initial-claim order assertion RED
+
+on:
+  push:
+    branches:
+      - build/noerith-q06-initial-claim-20261015
+    paths:
+      - .github/workflows/noerith-q06-initial-claim-red.yml
+
+permissions:
+  contents: read
+
+jobs:
+  initial-claim-red:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      TARGET_SHA: 47417b79868aa3b898383ab495cf9b7f801b4de8
+    steps:
+      - name: Checkout source-free public relay
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Public privacy contract
+        shell: bash
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Exact private ephemeral read-only checkout
+        shell: bash
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Execute and qualify genuine Rust assertion RED
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          LOG="${RUNNER_TEMP}/q06-private-initial-claim-red.log"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --no-self-update >"${RUNNER_TEMP}/q06-private-toolchain.log" 2>&1
+          cd "$ROOT"
+          set +e
+          cargo +1.98.1 test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked \
+            --test validator_initial_claim_order >"$LOG" 2>&1
+          exitcode=$?
+          set -e
+          test "$exitcode" -ne 0
+          grep -Fq 'test permuted_independent_initial_claim_records_are_not_new_base_histories ... FAILED' "$LOG"
+          grep -Fq 'test changed_initial_claim_fact_is_real_semantic_variation ... ok' "$LOG"
+          grep -Fq 'Q06_INITIAL_CLAIM_ORDER_CLONE_ASSERTION_RED' "$LOG"
+          grep -Fq 'test result: FAILED' "$LOG"
+          if grep -Eq 'error\[E[0-9]+\]|error: could not compile|test result: ok' "$LOG"; then
+            echo Q06_INITIAL_CLAIM_EXPECTED_RED_NOT_PROVEN
+            exit 1
+          fi
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --exit-code --quiet
+          echo Q06_INITIAL_CLAIM_ORDER_ASSERTION_RED=OBSERVED
+          echo Q06_INITIAL_CLAIM_VALUE_POSITIVE=PASS
