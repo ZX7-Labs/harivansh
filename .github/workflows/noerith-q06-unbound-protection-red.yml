@@ -1,0 +1,58 @@
+name: NOERITH Q06 unbound-protection assertion RED
+
+on:
+  push:
+    branches:
+      - build/noerith-q06-unbound-protection-20261015
+    paths:
+      - .github/workflows/noerith-q06-unbound-protection-red.yml
+
+permissions:
+  contents: read
+
+jobs:
+  genuine-assertion-red:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      TARGET_SHA: ed307d827eaa6e7e659d51d94e27a4a4ef1211d3
+    steps:
+      - name: Checkout source-free public controls
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate privacy contract
+        shell: bash
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Exact read-only ephemeral private checkout
+        shell: bash
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Execute adversarial Rust assertions with opposite-direction control
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          LOG="${RUNNER_TEMP}/q06-private-unbound-red.log"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --no-self-update >"${RUNNER_TEMP}/q06-private-toolchain.log" 2>&1
+          cd "$ROOT"
+          set +e
+          cargo +1.98.1 test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked \
+            --test validator_unbound_protection >"$LOG" 2>&1
+          result=$?
+          set -e
+          test "$result" -ne 0
+          grep -Fq 'test unbound_protected_declaration_cannot_bypass_behavioral_witness ... FAILED' "$LOG"
+          grep -Fq 'test original_source_owned_rule_still_passes ... ok' "$LOG"
+          grep -Fq 'Q06_UNBOUND_PROTECTION_ASSERTION_RED' "$LOG"
+          grep -Fq 'test result: FAILED' "$LOG"
+          if grep -Eq 'error\[E[0-9]+\]|error: could not compile' "$LOG"; then
+            echo Q06_UNBOUND_DECLARATION_INVALID_COMPILATION_FAILURE
+            exit 1
+          fi
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --exit-code --quiet
+          echo Q06_UNBOUND_PROTECTION_ASSERTION_RED=OBSERVED
+          echo Q06_EXISTING_BOUND_PROTECTION_POSITIVE=PASS
