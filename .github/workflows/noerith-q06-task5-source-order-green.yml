@@ -53,6 +53,16 @@ jobs:
           }
           gate toolchain rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy --no-self-update
           export RUSTUP_TOOLCHAIN=1.98.1
+          if rustfmt --edition 2024 --check tools/q06-memory-context-eval/src/validator.rs >"$LOGDIR/fmt-core.log" 2>&1; then
+            echo Q06_SOURCE_ORDER_FMT_CORE=PASS
+          else
+            echo Q06_SOURCE_ORDER_FMT_CORE=FAIL
+          fi
+          if rustfmt --edition 2024 --check tools/q06-memory-context-eval/tests/validator_source_order.rs >"$LOGDIR/fmt-test.log" 2>&1; then
+            echo Q06_SOURCE_ORDER_FMT_TEST=PASS
+          else
+            echo Q06_SOURCE_ORDER_FMT_TEST=FAIL
+          fi
           gate fmt cargo fmt --manifest-path "$MANIFEST" -- --check
           gate focused cargo test --manifest-path "$MANIFEST" --locked --test validator_source_order --test validator --test validator_severity_identity
           gate full-crate cargo test --manifest-path "$MANIFEST" --locked
