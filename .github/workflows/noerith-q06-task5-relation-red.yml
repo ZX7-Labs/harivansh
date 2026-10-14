@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
-      TARGET_SHA: 66a8ccec495ff5d18d48693ebae2fc22a6138b8b
+      TARGET_SHA: dc0ee1ef0a0e80f81c6874fef063aa895fca8738
     steps:
       - name: Checkout public source-free relay
         uses: actions/checkout@v4
@@ -39,17 +39,17 @@ jobs:
           rustup toolchain install 1.98.1 --profile minimal --no-self-update >"${RUNNER_TEMP}/q06-toolchain-private.log" 2>&1
           set +e
           cargo +1.98.1 test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked --test validator \
-            sibling_relation_must_be_declared_by_the_source_owned_family \
-            >"${RUNNER_TEMP}/q06-relation-private.log" 2>&1
+            surface_paraphrase_sibling_cannot_be_a_distinct_value_bearing_history \
+            >"${RUNNER_TEMP}/q06-paraphrase-private.log" 2>&1
           result=$?
           set -e
           test "$result" -ne 0
-          grep -Fq 'test sibling_relation_must_be_declared_by_the_source_owned_family ... FAILED' "${RUNNER_TEMP}/q06-relation-private.log"
-          grep -Fq 'test result: FAILED' "${RUNNER_TEMP}/q06-relation-private.log"
-          if grep -Eq 'error\[E[0-9]+\]|error: could not compile' "${RUNNER_TEMP}/q06-relation-private.log"; then
+          grep -Fq 'test surface_paraphrase_sibling_cannot_be_a_distinct_value_bearing_history ... FAILED' "${RUNNER_TEMP}/q06-paraphrase-private.log"
+          grep -Fq 'test result: FAILED' "${RUNNER_TEMP}/q06-paraphrase-private.log"
+          if grep -Eq 'error\[E[0-9]+\]|error: could not compile' "${RUNNER_TEMP}/q06-paraphrase-private.log"; then
             echo Q06_RELATION_ASSERTION_NOT_EXECUTED
             exit 1
           fi
-          echo Q06_RELATION_ASSERTION_RED=OBSERVED
+          echo Q06_PARAPHRASE_ASSERTION_RED=OBSERVED
           test "$(git rev-parse HEAD)" = "$TARGET_SHA"
           git diff --exit-code --quiet
