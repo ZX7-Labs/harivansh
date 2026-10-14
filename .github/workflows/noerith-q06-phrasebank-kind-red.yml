@@ -1,0 +1,49 @@
+name: Q06 phrasebank unknown semantic-kind assertion RED
+on:
+  push:
+    branches: [build/noerith-q06-phrasebank-foundation-20261015]
+    paths: [.github/workflows/noerith-q06-phrasebank-kind-red.yml]
+permissions:
+  contents: read
+jobs:
+  genuine-assertion-red:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      TARGET_SHA: 2d97bd006f5b38c019e2b0100fb87b673daf03db
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: bash tests/test-noerith-relay-contract.sh
+      - name: Read-only exact pinned private checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Require real adversarial Rust assertion RED and two PASS controls
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          LOG="${RUNNER_TEMP}/q06-phrasebank-kind-red-private.log"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --no-self-update >"${RUNNER_TEMP}/rust-install-private.log" 2>&1
+          cd "$ROOT"
+          set +e
+          cargo +1.98.1 test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked --test realization_phrasebank >"$LOG" 2>&1
+          result=$?
+          set -e
+          test "$result" -ne 0
+          grep -Fq 'test unregistered_event_or_probe_kind_is_not_approved_phrase_semantics ... FAILED' "$LOG"
+          grep -Fq 'test surplus_render_binding_does_not_bypass_exact_slot_contract ... ok' "$LOG"
+          grep -Fq 'test oversized_dynamic_slot_cannot_overflow_render_budget ... ok' "$LOG"
+          grep -Fq 'Q06_PHRASEBANK_UNKNOWN_KIND_ASSERTION_RED' "$LOG"
+          grep -Fq 'test result: FAILED' "$LOG"
+          if grep -Eq 'error\[E[0-9]+\]|error: could not compile' "$LOG"; then
+            echo Q06_PHRASEBANK_UNKNOWN_KIND_COMPILE_ERROR_NOT_RED
+            exit 1
+          fi
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --exit-code --quiet
+          echo Q06_PHRASEBANK_UNKNOWN_KIND_ASSERTION_RED=OBSERVED
+          echo Q06_PHRASEBANK_OVERFLOW_SLOT_EXTRA_CONTROLS=PASS
