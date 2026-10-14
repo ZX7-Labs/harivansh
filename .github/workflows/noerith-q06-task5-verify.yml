@@ -1,0 +1,123 @@
+name: NOERITH Q06 Task5 exact-source private verification
+
+on:
+  push:
+    branches:
+      - build/noerith-q06-task5-verify-20261014
+    paths:
+      - .github/workflows/noerith-q06-task5-verify.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: noerith-q06-task5-verification-20261014
+  cancel-in-progress: false
+
+jobs:
+  relay-self-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout public source-free relay
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify established relay privacy contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tests/test-noerith-relay-contract.sh
+          echo Q06_RELAY_PRIVACY_CONTRACT=PASS
+
+  isolated-task5:
+    needs: relay-self-test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      TARGET_SHA: d8364f932f3b660d99a08d00313b3d491d9602c4
+    steps:
+      - name: Checkout public source-free relay
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Prepare ephemeral protected diagnostics
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/q06-task5-private-diagnostics"
+
+      - name: Exact read-only private source checkout
+        shell: bash
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+
+      - name: Pinned standalone Q06 Task5 gates
+        id: task5
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          DIAG="${RUNNER_TEMP}/q06-task5-private-diagnostics"
+          MANIFEST="tools/q06-memory-context-eval/Cargo.toml"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          cd "$ROOT"
+
+          gate() {
+            local label="$1"
+            shift
+            if "$@" >"$DIAG/${label}.log" 2>&1; then
+              echo "Q06_TASK5_GATE_${label}=PASS"
+            else
+              echo "Q06_TASK5_GATE_${label}=FAIL"
+              return 1
+            fi
+          }
+
+          gate toolchain rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy --no-self-update
+          export RUSTUP_TOOLCHAIN=1.98.1
+          gate fmt cargo fmt --manifest-path "$MANIFEST" -- --check
+          gate validator-focused cargo test --manifest-path "$MANIFEST" --locked --test validator --test validator_severity_identity
+          gate full-crate cargo test --manifest-path "$MANIFEST" --locked
+          gate strict-clippy cargo clippy --manifest-path "$MANIFEST" --all-targets --locked -- -D warnings
+
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --exit-code --quiet
+          echo "NOERITH_Q06_TASK5_EXACT_HEAD_GATES=PASS"
+
+      - name: Encrypt any private diagnostic evidence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          DIAG="${RUNNER_TEMP}/q06-task5-private-diagnostics"
+          TAR="${RUNNER_TEMP}/q06-task5-diagnostics.tar"
+          CIPHER="${RUNNER_TEMP}/q06-task5-diagnostics.cms"
+          mkdir -p "$DIAG"
+          tar -C "$DIAG" -cf "$TAR" .
+          openssl cms -encrypt -binary -aes256 -outform DER \
+            -in "$TAR" -out "$CIPHER" \
+            certs/noerith-task4-evidence-recipient.pem
+          sha256sum "$CIPHER" | sed 's# .*$##' | sed 's/^/Q06_TASK5_ENCRYPTED_DIAGNOSTIC_SHA256=/'
+          rm -rf "$DIAG" "$TAR"
+
+      - name: Upload ciphertext only with short retention
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: q06-task5-encrypted-diagnostics-only
+          path: ${{ runner.temp }}/q06-task5-diagnostics.cms
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+      - name: Enforce exact task5 result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ steps.task5.outcome }}" = success
+          echo NOERITH_Q06_TASK5_VERIFICATION=PASS
