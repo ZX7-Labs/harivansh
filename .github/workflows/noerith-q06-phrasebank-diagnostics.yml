@@ -41,7 +41,7 @@ jobs:
           printf 'test=%s\nfmt=%s\nclippy=%s\n' "$TEST_STATUS" "$FORMAT_STATUS" "$CLIPPY_STATUS" >"$D/status.txt"
           echo Q06_PHRASEBANK_PRIVATE_DIAGNOSTICS_EXECUTED=PASS
           tar -C "$D" -cf "${RUNNER_TEMP}/q06-private-diagnostic.tar" .
-          openssl cms -encrypt -binary -aes256 -outform DER -in "${RUNNER_TEMP}/q06-private-diagnostic.tar" -out "${RUNNER_TEMP}/q06-private-diagnostic.cms" certs/q06-task5-format-receipt-20261015.pem
+          openssl cms -encrypt -binary -aes256 -outform DER -in "${RUNNER_TEMP}/q06-private-diagnostic.tar" -out "${RUNNER_TEMP}/q06-private-diagnostic.cms" "${GITHUB_WORKSPACE}/certs/q06-task5-format-receipt-20261015.pem"
           rm -rf "$D" "${RUNNER_TEMP}/q06-private-diagnostic.tar"
           test "$(git rev-parse HEAD)" = "$TARGET_SHA"
           git diff --exit-code --quiet
