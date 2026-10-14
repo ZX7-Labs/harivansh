@@ -1,0 +1,59 @@
+name: NOERITH Q06 clippy encrypted diagnostics on pinned private candidate
+
+on:
+  push:
+    branches:
+      - build/noerith-q06-source-order-red-20261015
+    paths:
+      - .github/workflows/noerith-q06-task5-clippy-diagnostics.yml
+
+permissions:
+  contents: read
+
+jobs:
+  encrypted-clippy-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      TARGET_SHA: add5ee5b10c77cdc509b93aa287aa0126af53b05
+    steps:
+      - name: Checkout source-free public verifier
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify public privacy rules
+        shell: bash
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Pinned read-only ephemeral private checkout
+        shell: bash
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Clippy and encrypted-only result
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          LOG="${RUNNER_TEMP}/q06-clippy-private.log"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --component clippy --no-self-update >"${RUNNER_TEMP}/clippy-install-private.log" 2>&1
+          cd "$ROOT"
+          set +e
+          cargo +1.98.1 clippy --manifest-path tools/q06-memory-context-eval/Cargo.toml --all-targets --locked -- -D warnings >"$LOG" 2>&1
+          result=$?
+          set -e
+          if test "$result" -eq 0; then
+            echo Q06_CLIPPY_PRIVATE_PINNED=PASS
+          else
+            echo Q06_CLIPPY_PRIVATE_PINNED=FAIL
+          fi
+          gzip -9 -c "$LOG" | openssl cms -encrypt -binary -aes256 -outform DER \
+            -recip "${GITHUB_WORKSPACE}/certs/q06-task5-format-receipt-20261015.pem" \
+            -out "${RUNNER_TEMP}/q06-clippy-cipher.cms"
+          rm -f "$LOG"
+          echo Q06_CLIPPY_CIPHERTEXT_BEGIN
+          base64 -w 0 "${RUNNER_TEMP}/q06-clippy-cipher.cms"
+          echo
+          echo Q06_CLIPPY_CIPHERTEXT_END
+          echo Q06_CLIPPY_CIPHERTEXT_ONLY=PASS
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
