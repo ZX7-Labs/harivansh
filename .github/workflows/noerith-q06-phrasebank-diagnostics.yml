@@ -1,0 +1,56 @@
+name: NOERITH Q06 phrasebank encrypted compiler diagnostics
+on:
+  push:
+    branches: [build/noerith-q06-phrasebank-foundation-20261015]
+    paths: [.github/workflows/noerith-q06-phrasebank-diagnostics.yml]
+permissions:
+  contents: read
+jobs:
+  exact-readonly-diagnostics:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      TARGET_SHA: 6f8f33130e3f2e2c2450f5aaf943814ed0f00af6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: bash tests/test-noerith-relay-contract.sh
+      - name: Read only exact private checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Capture bounded Rust diagnostics off public logs
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          D="${RUNNER_TEMP}/q06-private-diagnostic"
+          mkdir -p "$D"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy --no-self-update >"$D/toolchain.log" 2>&1
+          cd "$ROOT"
+          set +e
+          cargo +1.98.1 test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked --test realization_phrasebank >"$D/test.log" 2>&1
+          TEST_STATUS=$?
+          cargo +1.98.1 fmt --manifest-path tools/q06-memory-context-eval/Cargo.toml -- --check >"$D/fmt.log" 2>&1
+          FORMAT_STATUS=$?
+          cargo +1.98.1 clippy --manifest-path tools/q06-memory-context-eval/Cargo.toml --all-targets --locked -- -D warnings >"$D/clippy.log" 2>&1
+          CLIPPY_STATUS=$?
+          set -e
+          printf 'test=%s\nfmt=%s\nclippy=%s\n' "$TEST_STATUS" "$FORMAT_STATUS" "$CLIPPY_STATUS" >"$D/status.txt"
+          echo Q06_PHRASEBANK_PRIVATE_DIAGNOSTICS_EXECUTED=PASS
+          tar -C "$D" -cf "${RUNNER_TEMP}/q06-private-diagnostic.tar" .
+          openssl cms -encrypt -binary -aes256 -outform DER -in "${RUNNER_TEMP}/q06-private-diagnostic.tar" -out "${RUNNER_TEMP}/q06-private-diagnostic.cms" certs/q06-task5-format-receipt-20261015.pem
+          rm -rf "$D" "${RUNNER_TEMP}/q06-private-diagnostic.tar"
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --exit-code --quiet
+          echo Q06_PHRASEBANK_CIPHERTEXT_ONLY=PASS
+      - name: Upload ciphertext only
+        uses: actions/upload-artifact@v4
+        with:
+          name: q06-phrasebank-compiler-ciphertext
+          path: ${{ runner.temp }}/q06-private-diagnostic.cms
+          retention-days: 1
+          if-no-files-found: error
+          compression-level: 0
