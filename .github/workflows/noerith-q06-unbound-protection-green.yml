@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
-      TARGET_SHA: da74c8652630c2192fa2c277143584ddbcb44285
+      TARGET_SHA: 1148e8ad96592913b7f147462e363990df617bb0
     steps:
       - name: Checkout source-free public verifier
         uses: actions/checkout@v4
