@@ -1,0 +1,76 @@
+name: Q06 constraint alpha exact Rust gates
+on:
+  push:
+    branches: [build/noerith-q06-constraint-ref-alpha-20261015]
+    paths: [.github/workflows/noerith-q06-constraint-ref-alpha-green.yml]
+permissions:
+  contents: read
+jobs:
+  pinned-private-checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      TARGET_SHA: 9ecd392c9be2e56ef7e8ef149974962aead98b6d
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Privacy contract
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Exact read-only private source
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Check pinned Rust gates without publishing private logs
+        id: verify
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          LOGS="${RUNNER_TEMP}/q06-alpha-private"
+          MANIFEST=tools/q06-memory-context-eval/Cargo.toml
+          mkdir -p "$LOGS"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          cd "$ROOT"
+          check() {
+            local name="$1"; shift
+            if "$@" > "$LOGS/$name.log" 2>&1; then
+              echo "Q06_ALPHA_GATE_${name}=PASS"
+            else
+              echo "Q06_ALPHA_GATE_${name}=FAIL"
+              return 1
+            fi
+          }
+          check toolchain rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy --no-self-update
+          export RUSTUP_TOOLCHAIN=1.98.1
+          check fmt cargo fmt --manifest-path "$MANIFEST" -- --check
+          check focused cargo test --manifest-path "$MANIFEST" --locked --test validator_constraint_ref_alpha --test validator_unbound_protection --test validator_initial_claim_order --test validator_source_order --test validator --test validator_severity_identity
+          check full cargo test --manifest-path "$MANIFEST" --locked
+          check clippy cargo clippy --manifest-path "$MANIFEST" --all-targets --locked -- -D warnings
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --exit-code --quiet
+          echo Q06_ALPHA_PINNED_ALL_GATES=PASS
+      - name: Encrypt private diagnostic logs
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/q06-alpha-private"
+          tar -C "${RUNNER_TEMP}/q06-alpha-private" -cf "${RUNNER_TEMP}/alpha-logs.tar" .
+          openssl cms -encrypt -binary -aes256 -outform DER -in "${RUNNER_TEMP}/alpha-logs.tar" -out "${RUNNER_TEMP}/alpha-logs.cms" certs/q06-task5-ephemeral-format-transfer.pem
+          rm -rf "${RUNNER_TEMP}/q06-alpha-private" "${RUNNER_TEMP}/alpha-logs.tar"
+      - name: Retain ciphertext only for one day
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: q06-alpha-logs-encrypted-only
+          path: ${{ runner.temp }}/alpha-logs.cms
+          retention-days: 1
+          if-no-files-found: error
+          compression-level: 0
+      - name: Final gate
+        if: always()
+        run: |
+          test "${{ steps.verify.outcome }}" = success
+          echo Q06_ALPHA_PINNED_EXACT_GREEN=PASS
