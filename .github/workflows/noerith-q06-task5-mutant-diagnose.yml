@@ -15,8 +15,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
-      TARGET_SHA: 9694131224cdab9b3edcc2e4f51332c33f31230c
-      Q06_ONLY_MUTANT: unrelated-subject-boundary
+      TARGET_SHA: efcb1c4d1923d7b3c69f7a90b7cd48e131a6726d
+      Q06_ONLY_MUTANT: unrelated-subject-and-constraint-boundary
     steps:
       - name: Checkout public source-free relay
         uses: actions/checkout@v4
