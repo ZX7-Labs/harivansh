@@ -1,0 +1,55 @@
+name: NOERITH Q06 Task5 source-record order assertion RED
+
+on:
+  push:
+    branches:
+      - build/noerith-q06-source-order-red-20261015
+    paths:
+      - .github/workflows/noerith-q06-task5-source-order-red.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify-expected-red:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      TARGET_SHA: 633fc60de4932032632b9ad9760b8bba8e5a9935
+    steps:
+      - name: Checkout public source-free relay
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Privacy preflight
+        shell: bash
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Exact private checkout without public source mirror
+        shell: bash
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Execute exact focused test and require real assertion RED
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          LOG="${RUNNER_TEMP}/q06-source-order-private-test.log"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          cd "$ROOT"
+          rustup toolchain install 1.98.1 --profile minimal --no-self-update >"${RUNNER_TEMP}/q06-private-rustup.log" 2>&1
+          set +e
+          cargo +1.98.1 test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked --test validator_source_order             source_record_permutation_cannot_create_independent_base_histories >"$LOG" 2>&1
+          test_exit=$?
+          set -e
+          test "$test_exit" -ne 0
+          grep -Fq 'test source_record_permutation_cannot_create_independent_base_histories ... FAILED' "$LOG"
+          grep -Fq 'test result: FAILED' "$LOG"
+          grep -Fq 'Q06_SOURCE_ORDER_CLONE_ASSERTION_RED' "$LOG"
+          if grep -Eq 'error\[E[0-9]+\]|error: could not compile' "$LOG"; then
+            echo Q06_SOURCE_ORDER_RED_INVALID_COMPILATION_FAILURE
+            exit 1
+          fi
+          echo Q06_SOURCE_ORDER_ASSERTION_RED=OBSERVED
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --exit-code --quiet
