@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
-      TARGET_SHA: ee55b96448d1e27d83caaff034340299517498c7
+      TARGET_SHA: 4bb319955e679c0cd9b2ebdd9bc362432a8dac98
     steps:
       - uses: actions/checkout@v4
         with:
@@ -35,6 +35,7 @@ jobs:
             exit 1
           }
           grep -Fq 'Q06_SOURCE_OWNED_DEV_ASSET_TAMPER=KILLED_BY_ASSERTION' "$LOG"
+          grep -Fq 'Q06_SOURCE_OWNED_HERMETIC_PROFILE_TAMPER=BLOCKED_BY_PIN' "$LOG"
           test "$(git rev-parse HEAD)" = "$TARGET_SHA"
           git diff --exit-code --quiet
           echo Q06_SOURCE_OWNED_ASSET_TAMPER_ASSERTION_GATE=PASS
