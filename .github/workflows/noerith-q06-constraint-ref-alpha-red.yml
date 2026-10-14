@@ -1,0 +1,58 @@
+name: NOERITH Q06 constraint-reference alpha identity RED
+
+on:
+  push:
+    branches:
+      - build/noerith-q06-constraint-ref-alpha-20261015
+    paths:
+      - .github/workflows/noerith-q06-constraint-ref-alpha-red.yml
+
+permissions:
+  contents: read
+
+jobs:
+  require-authentic-rust-assertion-red:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      TARGET_SHA: 017ac2763d11db3e276bf8a452cfa09ebac8455b
+    steps:
+      - name: Checkout source-free public controls
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify privacy preflight
+        shell: bash
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Exact private detached HEAD ephemeral read-only checkout
+        shell: bash
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Execute exact regression and require positive and genuine assertion RED
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          LOG="${RUNNER_TEMP}/q06-private-constraint-ref-alpha.log"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --no-self-update >"${RUNNER_TEMP}/q06-toolchain-private.log" 2>&1
+          cd "$ROOT"
+          set +e
+          cargo +1.98.1 test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked \
+            --test validator_constraint_ref_alpha >"$LOG" 2>&1
+          result=$?
+          set -e
+          test "$result" -ne 0
+          grep -Fq 'test coherent_constraint_handle_rename_cannot_inflate_independent_base_count ... FAILED' "$LOG"
+          grep -Fq 'test changed_authority_rank_still_creates_distinct_semantic_source_history ... ok' "$LOG"
+          grep -Fq 'Q06_CONSTRAINT_REF_ALPHA_ASSERTION_RED' "$LOG"
+          grep -Fq 'test result: FAILED' "$LOG"
+          if grep -Eq 'error\[E[0-9]+\]|error: could not compile' "$LOG"; then
+            echo Q06_CONSTRAINT_REF_ALPHA_COMPILE_ERROR_NOT_RED
+            exit 1
+          fi
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --exit-code --quiet
+          echo Q06_CONSTRAINT_REF_ALPHA_ASSERTION_RED=OBSERVED
+          echo Q06_AUTHORITY_DIFFERENCE_POSITIVE=PASS
