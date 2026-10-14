@@ -52,3 +52,12 @@ jobs:
           echo
           echo Q06_FMT_CIPHERTEXT_END
           echo Q06_PRIVATE_FMT_PATCH_CIPHERTEXT_ONLY=PASS
+
+      - name: Export encrypted patch only for offline private review
+        uses: actions/upload-artifact@v4
+        with:
+          name: q06-overlap-formatter-ciphertext
+          path: ${{ runner.temp }}/q06-encrypted-format-patch.cms
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
