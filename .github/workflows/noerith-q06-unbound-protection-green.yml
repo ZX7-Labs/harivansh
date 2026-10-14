@@ -1,0 +1,91 @@
+name: NOERITH Q06 unbound-declaration exact pinned gates
+
+on:
+  push:
+    branches:
+      - build/noerith-q06-unbound-protection-20261015
+    paths:
+      - .github/workflows/noerith-q06-unbound-protection-green.yml
+
+permissions:
+  contents: read
+
+jobs:
+  pinned-private-initial:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      TARGET_SHA: da74c8652630c2192fa2c277143584ddbcb44285
+    steps:
+      - name: Checkout source-free public verifier
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Privacy contract
+        shell: bash
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Pinned private read-only checkout
+        shell: bash
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Exact Rust 1.98.1 core gates
+        id: gates
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          LOGS="${RUNNER_TEMP}/q06-initial-private"
+          mkdir -p "$LOGS"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          cd "$ROOT"
+          MANIFEST=tools/q06-memory-context-eval/Cargo.toml
+          gate() {
+            local label="$1"
+            shift
+            if "$@" >"$LOGS/${label}.log" 2>&1; then
+              echo "Q06_UNBOUND_PROTECTION_GATE_${label}=PASS"
+            else
+              echo "Q06_UNBOUND_PROTECTION_GATE_${label}=FAIL"
+              return 1
+            fi
+          }
+          gate toolchain rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy --no-self-update
+          export RUSTUP_TOOLCHAIN=1.98.1
+          gate fmt cargo fmt --manifest-path "$MANIFEST" -- --check
+          gate focused cargo test --manifest-path "$MANIFEST" --locked \
+            --test validator_unbound_protection --test validator_initial_claim_order --test validator_source_order --test validator --test validator_severity_identity
+          gate full-crate cargo test --manifest-path "$MANIFEST" --locked
+          gate clippy cargo clippy --manifest-path "$MANIFEST" --all-targets --locked -- -D warnings
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --exit-code --quiet
+          echo Q06_UNBOUND_PROTECTION_EXACT_ALL_GATES=PASS
+      - name: Encrypt logs (no plaintext private source)
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          DIR="${RUNNER_TEMP}/q06-initial-private"
+          mkdir -p "$DIR"
+          tar -C "$DIR" -cf "${RUNNER_TEMP}/initial-private.tar" .
+          openssl cms -encrypt -binary -aes256 -outform DER \
+            -in "${RUNNER_TEMP}/initial-private.tar" -out "${RUNNER_TEMP}/initial-private.cms" \
+            certs/q06-task5-ephemeral-format-transfer.pem
+          rm -rf "$DIR" "${RUNNER_TEMP}/initial-private.tar"
+      - name: Upload ciphertext only with one-day retention
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: q06-initial-claim-encrypted-diagnostics
+          path: ${{ runner.temp }}/initial-private.cms
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+      - name: Enforce exact SHA source gates
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ steps.gates.outcome }}" = success
+          echo Q06_UNBOUND_PROTECTION_EXACT_GREEN=PASS
