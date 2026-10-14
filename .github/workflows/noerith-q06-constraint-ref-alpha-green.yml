@@ -44,6 +44,16 @@ jobs:
           }
           check toolchain rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy --no-self-update
           export RUSTUP_TOOLCHAIN=1.98.1
+          if rustfmt --edition 2024 --check tools/q06-memory-context-eval/src/validator.rs > "$LOGS/core-fmt.log" 2>&1; then
+            echo Q06_ALPHA_FMT_CORE=PASS
+          else
+            echo Q06_ALPHA_FMT_CORE=FAIL
+          fi
+          if rustfmt --edition 2024 --check tools/q06-memory-context-eval/tests/validator_constraint_ref_alpha.rs > "$LOGS/test-fmt.log" 2>&1; then
+            echo Q06_ALPHA_FMT_TEST=PASS
+          else
+            echo Q06_ALPHA_FMT_TEST=FAIL
+          fi
           check fmt cargo fmt --manifest-path "$MANIFEST" -- --check
           check focused cargo test --manifest-path "$MANIFEST" --locked --test validator_constraint_ref_alpha --test validator_unbound_protection --test validator_initial_claim_order --test validator_source_order --test validator --test validator_severity_identity
           check full cargo test --manifest-path "$MANIFEST" --locked
