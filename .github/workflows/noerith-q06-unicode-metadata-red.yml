@@ -1,0 +1,50 @@
+name: Q06 Unicode fullwidth hidden-label true assertion RED
+on:
+  push:
+    branches: [build/noerith-q06-unicode-metadata-20261015]
+    paths: [.github/workflows/noerith-q06-unicode-metadata-red.yml]
+permissions:
+  contents: read
+jobs:
+  assertion-red:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      TARGET_SHA: 0074edb994f90cd498f16ff3a2be1f52955686f2
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: bash tests/test-noerith-relay-contract.sh
+      - name: Exact private detached read-only checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Require actual Rust semantic assertion RED
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          LOG="${RUNNER_TEMP}/q06-fullwidth-private-red.log"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --no-self-update >"${RUNNER_TEMP}/q06-toolchain-private.log" 2>&1
+          cd "$ROOT"
+          set +e
+          cargo +1.98.1 test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked --test realization_phrasebank >"$LOG" 2>&1
+          code=$?
+          set -e
+          test "$code" -ne 0
+          grep -Fq 'test fullwidth_unicode_equivalent_hidden_labels_are_not_visible ... FAILED' "$LOG"
+          grep -Fq 'test fullwidth_hidden_marker_in_dynamic_value_is_blocked_without_rejecting_hindi ... FAILED' "$LOG"
+          grep -Fq 'Q06_PHRASEBANK_FULLWIDTH_MARKER_ASSERTION_RED' "$LOG"
+          grep -Fq 'Q06_PHRASEBANK_FULLWIDTH_SLOT_ASSERTION_RED' "$LOG"
+          grep -Fq 'test multilingual_slot_binding_preserves_exact_byte_spans_and_meaning ... ok' "$LOG"
+          grep -Fq 'test result: FAILED' "$LOG"
+          if grep -Eq 'error\[E[0-9]+\]|error: could not compile' "$LOG"; then
+            echo Q06_FULLWIDTH_COMPILER_ERROR_NOT_RED
+            exit 1
+          fi
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --exit-code --quiet
+          echo Q06_FULLWIDTH_METADATA_ASSERTION_RED=OBSERVED
+          echo Q06_HINDI_SLOT_POSITIVE=PASS
