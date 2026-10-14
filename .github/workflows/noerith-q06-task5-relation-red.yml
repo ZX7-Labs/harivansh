@@ -46,6 +46,7 @@ jobs:
           test "$result" -ne 0
           grep -Fq 'test surface_paraphrase_cannot_change_the_typed_probe_kind ... FAILED' "${RUNNER_TEMP}/q06-paraphrase-private.log"
           grep -Fq 'test result: FAILED' "${RUNNER_TEMP}/q06-paraphrase-private.log"
+          grep -Fq 'changing typed probe meaning is not a surface paraphrase' "${RUNNER_TEMP}/q06-paraphrase-private.log"
           if grep -Eq 'error\[E[0-9]+\]|error: could not compile' "${RUNNER_TEMP}/q06-paraphrase-private.log"; then
             echo Q06_RELATION_ASSERTION_NOT_EXECUTED
             exit 1
