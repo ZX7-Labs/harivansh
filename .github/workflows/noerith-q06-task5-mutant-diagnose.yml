@@ -1,0 +1,43 @@
+name: NOERITH Q06 Task5 focused private mutant diagnosis
+
+on:
+  push:
+    branches:
+      - build/noerith-q06-task5-verify-20261014
+    paths:
+      - .github/workflows/noerith-q06-task5-mutant-diagnose.yml
+
+permissions:
+  contents: read
+
+jobs:
+  private-single-mutant:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      TARGET_SHA: 9694131224cdab9b3edcc2e4f51332c33f31230c
+      Q06_ONLY_MUTANT: unrelated-subject-boundary
+    steps:
+      - name: Checkout public source-free relay
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Private-checkout boundary privacy preflight
+        shell: bash
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Exact read-only private source
+        shell: bash
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Diagnose named Rust assertion mutant with no source logs
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          cd "$ROOT"
+          rustup toolchain install 1.98.1 --profile minimal --no-self-update >"${RUNNER_TEMP}/q06-task5-diagnostic-toolchain-private.log" 2>&1
+          python3 -B tools/verify_q06_task5_validator_mutants.py
+          git diff --exit-code --quiet
+          echo Q06_SINGLE_MUTANT_ASSERTION_PROOF=PASS
