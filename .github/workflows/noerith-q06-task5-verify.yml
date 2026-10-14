@@ -100,7 +100,7 @@ jobs:
           tar -C "$DIAG" -cf "$TAR" .
           openssl cms -encrypt -binary -aes256 -outform DER \
             -in "$TAR" -out "$CIPHER" \
-            certs/noerith-task4-evidence-recipient.pem
+            certs/q06-task5-ephemeral-format-transfer.pem
           sha256sum "$CIPHER" | sed 's# .*$##' | sed 's/^/Q06_TASK5_ENCRYPTED_DIAGNOSTIC_SHA256=/'
           rm -rf "$DIAG" "$TAR"
 
