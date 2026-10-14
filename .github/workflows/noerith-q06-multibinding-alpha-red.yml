@@ -1,0 +1,49 @@
+name: Q06 multibinding alpha identity genuine assertion RED
+on:
+  push:
+    branches: [build/noerith-q06-multibinding-alpha-20261015]
+    paths: [.github/workflows/noerith-q06-multibinding-alpha-red.yml]
+permissions:
+  contents: read
+jobs:
+  exact-private-assertion:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      TARGET_SHA: 0639cc70baf333ad8afbf8ade2cc436456c270e1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: bash tests/test-noerith-relay-contract.sh
+      - name: Exact private read-only checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Require assertion RED and opposite-direction real value PASS
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          LOG="${RUNNER_TEMP}/q06-multibinding-private.log"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --no-self-update >"${RUNNER_TEMP}/toolchain.log" 2>&1
+          cd "$ROOT"
+          set +e
+          cargo +1.98.1 test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked --test validator_overlapping_constraints >"$LOG" 2>&1
+          result=$?
+          set -e
+          test "$result" -ne 0
+          grep -Fq 'test two_rule_constraint_ref_relabeling_is_not_new_independent_memory_history ... FAILED' "$LOG"
+          grep -Fq 'test different_second_rule_value_is_a_real_distinct_protected_history ... ok' "$LOG"
+          grep -Fq 'test overlapping_rules_with_distinct_behavioral_probes_can_both_be_proven ... ok' "$LOG"
+          grep -Fq 'Q06_TWO_RULE_ALPHA_CLONE_ASSERTION_RED' "$LOG"
+          grep -Fq 'test result: FAILED' "$LOG"
+          if grep -Eq 'error\[E[0-9]+\]|error: could not compile' "$LOG"; then
+            echo Q06_MULTIBINDING_ALPHA_COMPILE_ERROR_NOT_RED
+            exit 1
+          fi
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --exit-code --quiet
+          echo Q06_MULTIBINDING_ALPHA_ASSERTION_RED=OBSERVED
+          echo Q06_MULTIBINDING_VALUE_DIFFERENCE_POSITIVE=PASS
