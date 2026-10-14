@@ -75,7 +75,7 @@ jobs:
           tar -C "$DIAG" -cf "$TAR" .
           openssl cms -encrypt -binary -aes256 -outform DER \
             -in "$TAR" -out "$CIPHER" \
-            certs/q06-task5-ephemeral-format-transfer.pem
+            "${GITHUB_WORKSPACE}/certs/q06-task5-format-receipt-20261015.pem"
           rm -rf "$DIAG" "$TAR"
 
       - name: Upload ciphertext only (1 day)
