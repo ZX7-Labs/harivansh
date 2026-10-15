@@ -1,0 +1,42 @@
+name: Q06 22 event and 11 probe DEV review-status assertion mutants
+on:
+  push:
+    branches: [build/noerith-q06-task8-dev-seedfile-20261015]
+    paths: [.github/workflows/noerith-q06-reviewed-source-inventory-mutants-20261016.yml]
+permissions:
+  contents: read
+jobs:
+  private-source-reviewed-status-assertions:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      TARGET_SHA: 7c25954aad4b234af6f238b3a8308b519b0ae26c
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: bash tests/test-noerith-relay-contract.sh
+      - name: Read-only exact ephemeral private source
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Four real Rust event/probe status classification assertion mutants
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          LOG="${RUNNER_TEMP}/q06-private-review-status-mutants.log"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --no-self-update >"${RUNNER_TEMP}/rust-private-install.log" 2>&1
+          cd "$ROOT"
+          if ! python3 tools/verify_q06_task6_source_review_inventory_mutants.py >"$LOG" 2>&1; then
+            grep -E '^Q06_REVIEW_MUTANT_QUALIFICATION=FAIL Q06_REVIEW_MUTANT_[a-z0-9-]+=(SOURCE_MISMATCH|SURVIVED|WRONG_ASSERTION|COMPILER_FAILURE_NOT_KILL)$' "$LOG" || true
+            echo Q06_REVIEW_FOUR_MUTANTS_EXACT=FAIL
+            exit 1
+          fi
+          grep -Fxq 'Q06_REVIEW_MUTANT_QUALIFICATION=PASS count=4' "$LOG"
+          test "$(grep -Ec '^Q06_REVIEW_MUTANT_[a-z0-9-]+=KILLED_BY_ASSERTION$' "$LOG")" -eq 4
+          grep -E '^Q06_REVIEW_MUTANT_[a-z0-9-]+=KILLED_BY_ASSERTION$' "$LOG"
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --exit-code --quiet
+          echo Q06_REVIEW_FOUR_MUTANTS_EXACT=PASS
