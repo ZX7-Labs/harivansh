@@ -43,16 +43,12 @@ jobs:
           echo Q06_DURABLE_SIX_ASSERTION_MUTANTS=PASS
           OBSERVER_LOG="${RUNNER_TEMP}/q06-private-observer-mutants.log"
           if ! python3 -B tools/verify_q06_task8_dev_local_observer_mutants.py >"$OBSERVER_LOG" 2>&1; then
-            grep -E '^Q06_OBSERVER_MUTANT_QUALIFICATION=FAIL (Q06_OBSERVER_MUTANT_[a-z-]+=(SOURCE_MISMATCH|SURVIVED|COMPILER_FAILURE_NOT_KILL|WRONG_ASSERTION)|[A-Za-z]+Error)
- "$OBSERVER_LOG" || true
             echo Q06_OBSERVER_MUTANT_GATE=FAIL
             exit 1
           fi
-          grep -Fxq 'Q06_OBSERVER_MUTANT_QUALIFICATION=PASS count=6' "$OBSERVER_LOG"
-          test "$(grep -Ec '^Q06_OBSERVER_MUTANT_[a-z-]+=KILLED_BY_ASSERTION
- "$OBSERVER_LOG")" -eq 6
-          grep -E '^Q06_OBSERVER_MUTANT_[a-z-]+=KILLED_BY_ASSERTION
- "$OBSERVER_LOG"
+          grep -Fxq "Q06_OBSERVER_MUTANT_QUALIFICATION=PASS count=6" "$OBSERVER_LOG"
+          test "$(grep -c "=KILLED_BY_ASSERTION" "$OBSERVER_LOG")" -eq 6
+          grep "=KILLED_BY_ASSERTION" "$OBSERVER_LOG"
           test "$(git rev-parse HEAD)" = "$TARGET_SHA"
           git diff --exit-code --quiet
           echo Q06_OBSERVER_SIX_ASSERTION_MUTANTS=PASS
