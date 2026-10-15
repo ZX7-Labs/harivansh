@@ -44,7 +44,7 @@ jobs:
           OTHER="$(git diff --name-only -- . ':!tools/q06-memory-context-eval/src/realization.rs' ':!tools/q06-memory-context-eval/tests/realization_dev_recall_surface.rs')"
           test -z "$OTHER"
           gzip -9 -c "$PATCH" | openssl cms -encrypt -binary -aes256 -outform DER \
-            -recip "${GITHUB_WORKSPACE}/certs/q06-task5-format-receipt-20261015.pem" \
+            -recip "${GITHUB_WORKSPACE}/certs/q06-recipient-20261015.pem" \
             -out "${RUNNER_TEMP}/q06-encrypted-format-patch.cms"
           rm -f "$PATCH"
           echo Q06_FMT_CIPHERTEXT_BEGIN
