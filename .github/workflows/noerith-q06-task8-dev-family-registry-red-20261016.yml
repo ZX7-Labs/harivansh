@@ -1,0 +1,44 @@
+name: Q06 source-owned family registry exact independent assertion RED
+on:
+  push:
+    branches: [build/noerith-q06-task8-dev-seedfile-20261015]
+    paths: [.github/workflows/noerith-q06-task8-dev-family-registry-red-20261016.yml]
+permissions:
+  contents: read
+jobs:
+  genuine-assertion-red:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      TARGET_SHA: 348d60f73f5a0563d5c9f87feb1753088a5e5ca3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: bash tests/test-noerith-relay-contract.sh
+      - name: Read-only exact private checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Prove independent byte fixture RED, not compiler error
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          LOG="${RUNNER_TEMP}/private-q06-family-reg-red.log"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --no-self-update >"${RUNNER_TEMP}/private-rust-install.log" 2>&1
+          cd "$ROOT"
+          set +e
+          cargo +1.98.1 test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked --test family_registry_identity_dev pinned_source_registry_exact_byte_identity_and_population_are_bound >"$LOG" 2>&1
+          EXIT=$?
+          set -e
+          test "$EXIT" -ne 0
+          if grep -Eq '^error\\[E[0-9]+\\]|^error: could not compile|^error: failed to' "$LOG"; then
+            echo Q06_FAMILY_REGISTRY_ASSERTION_RED=INVALID_COMPILER_FAILURE
+            exit 1
+          fi
+          grep -Fq 'test pinned_source_registry_exact_byte_identity_and_population_are_bound ... FAILED' "$LOG"
+          grep -Fq 'test result: FAILED' "$LOG"
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          echo Q06_FAMILY_REGISTRY_ASSERTION_RED=OBSERVED
