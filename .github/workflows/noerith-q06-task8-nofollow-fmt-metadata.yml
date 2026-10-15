@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
-      TARGET_SHA: 5ce4ee98615e8a6ac6ab280bcb2e553d01dcad44
+      TARGET_SHA: 3838378d566d3fe3f404dac878b36fd168aebd18
     steps:
       - uses: actions/checkout@v4
         with:
@@ -38,6 +38,8 @@ jobs:
               "tools/q06-memory-context-eval/tests/secret_seed_file_dev.rs": "TEST",
               "tools/q06-memory-context-eval/src/secret_seed_root_directory.rs": "DIRFD_SRC",
               "tools/q06-memory-context-eval/tests/seed_root_dir_dev.rs": "DIRFD_TEST",
+              "tools/q06-memory-context-eval/src/durable_custody_dev.rs": "CUSTODY_SRC",
+              "tools/q06-memory-context-eval/tests/durable_custody_dev.rs": "CUSTODY_TEST",
           }
           label = None
           count = 0
@@ -66,6 +68,8 @@ jobs:
           paths = [
               "tools/q06-memory-context-eval/src/secret_seed_root_directory.rs",
               "tools/q06-memory-context-eval/tests/seed_root_dir_dev.rs",
+              "tools/q06-memory-context-eval/src/durable_custody_dev.rs",
+              "tools/q06-memory-context-eval/tests/durable_custody_dev.rs",
           ]
           def split_whitespace(data):
               letters, gaps, current = bytearray(), [], bytearray()
@@ -93,7 +97,7 @@ jobs:
               ]
               if len(edits) > 120 or sum(len(value) for _, value in edits) > 8192:
                   raise SystemExit("Q06_FMT_WHITESPACE_ONLY=FAIL_BOUNDS")
-              label = "DIRFD_SRC" if "/src/" in path else "DIRFD_TEST"
+              label = {paths[0]: "DIRFD_SRC", paths[1]: "DIRFD_TEST", paths[2]: "CUSTODY_SRC", paths[3]: "CUSTODY_TEST"}[path]
               packet = {
                   "label": label,
                   "before_sha256": hashlib.sha256(before).hexdigest(),
