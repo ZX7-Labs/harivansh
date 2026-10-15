@@ -1,0 +1,54 @@
+name: Q06 independent correction known-answer reducer Rust gates
+on:
+  push:
+    branches: [build/noerith-q06-known-answer-correction-20261015]
+    paths: [.github/workflows/noerith-q06-known-answer-correction-green.yml]
+permissions:
+  contents: read
+jobs:
+  pinned-characterization:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      TARGET_SHA: 92e8c7f8ac180459ed2cfaaf68d7f0af047dc6d7
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Public source-free contract
+        shell: bash
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Exact private ephemeral checkout
+        shell: bash
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Focused positive and negative Rust characterizations
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          LOGS="${RUNNER_TEMP}/q06-overlap-logs"
+          mkdir -p "$LOGS"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy --no-self-update > "$LOGS/toolchain.log" 2>&1
+          echo Q06_OVERLAP_TOOLCHAIN=PASS
+          cd "$ROOT"
+          check() {
+            local label="$1"
+            shift
+            if "$@" > "$LOGS/$label.log" 2>&1; then
+              echo "Q06_OVERLAP_${label}=PASS"
+            else
+              echo "Q06_OVERLAP_${label}=FAIL"
+              return 1
+            fi
+          }
+          export RUSTUP_TOOLCHAIN=1.98.1
+          check focused cargo test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked --test validator_known_answer_correction --test validator_known_answer_actions --test validator_overlapping_constraints --test validator_constraint_ref_alpha
+          check full-crate cargo test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked
+          check clippy cargo clippy --manifest-path tools/q06-memory-context-eval/Cargo.toml --all-targets --locked -- -D warnings
+          check fmt cargo fmt --manifest-path tools/q06-memory-context-eval/Cargo.toml -- --check
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --exit-code --quiet
+          echo Q06_OVERLAP_EXACT_PINNED_ALL_GATES=PASS
