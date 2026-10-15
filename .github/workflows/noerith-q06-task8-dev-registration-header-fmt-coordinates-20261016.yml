@@ -39,7 +39,7 @@ jobs:
           n = 0
           for line in open(sys.argv[1], encoding="utf-8"):
               if line.startswith("@@"):
-                  match = re.match(r"^@@ -([0-9]+)(?:,([0-9]+))? \\+([0-9]+)(?:,([0-9]+))? @@", line)
+                  match = re.match(r"^@@ -([0-9]+)(?:,([0-9]+))? \+([0-9]+)(?:,([0-9]+))? @@", line)
                   if match is None:
                       raise SystemExit("Q06_REG_FMT_BAD_HUNK")
                   n += 1
