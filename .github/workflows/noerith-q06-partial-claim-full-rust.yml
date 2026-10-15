@@ -1,4 +1,4 @@
-name: Q06 local-claim observer genuine assertion RED
+name: Q06 local-claim observer exact private Rust qualification
 on:
   push:
     branches: [build/noerith-q06-task8-dev-seedfile-20261015]
@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     env:
-      TARGET_SHA: 7ebcbe85383144c8d59d8d62cf73237724ebc891
+      TARGET_SHA: eca6c530183cfcb081a43b17c055febed766c6c2
     steps:
       - uses: actions/checkout@v4
         with:
@@ -21,25 +21,31 @@ jobs:
         env:
           PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
         run: bash scripts/checkout-noerith-private.sh
-      - name: Require genuine Rust assertion RED (not a compiler failure)
+      - name: Exact private Rust focused, full crate, Clippy and fmt
         shell: bash
         run: |
           set -euo pipefail
           ROOT="${RUNNER_TEMP}/noerith-private-source"
+          LOGDIR="${RUNNER_TEMP}/q06-observe-green-logs"
+          mkdir -p "$LOGDIR"
           test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
-          rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy --no-self-update >"${RUNNER_TEMP}/toolchain.log" 2>&1
-          export RUSTUP_TOOLCHAIN=1.98.1
           cd "$ROOT"
-          LOG="${RUNNER_TEMP}/q06-observe-red-private.log"
-          set +e
-          cargo test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked --test durable_custody_dev local_observation_must >"$LOG" 2>&1
-          status=$?
-          set -e
-          test "$status" -ne 0
-          grep -Fq 'test result: FAILED' "$LOG"
-          grep -Fq 'test local_observation_must_distinguish_exact_existing_claim_from_other_digest ... FAILED' "$LOG"
-          grep -Fq 'test local_observation_must_distinguish_absence_from_an_unverified_record ... FAILED' "$LOG"
-          ! grep -Eq '^error(\[E[0-9]+\])?:|could not compile' "$LOG"
+          check() {
+            local name="$1"
+            shift
+            if "$@" >"$LOGDIR/$name.log" 2>&1; then
+              echo "Q06_OBSERVER_${name}=PASS"
+            else
+              echo "Q06_OBSERVER_${name}=FAIL"
+              return 1
+            fi
+          }
+          check toolchain rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy --no-self-update
+          export RUSTUP_TOOLCHAIN=1.98.1
+          check focused cargo test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked --test durable_custody_dev local_observation_must
+          check full-crate cargo test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked
+          check strict-clippy cargo clippy --manifest-path tools/q06-memory-context-eval/Cargo.toml --all-targets --locked -- -D warnings
+          check fmt cargo fmt --manifest-path tools/q06-memory-context-eval/Cargo.toml -- --check
           git diff --exit-code --quiet
           test "$(git rev-parse HEAD)" = "$TARGET_SHA"
-          echo NOERITH_Q06_OBSERVE_REAL_ASSERTION_RED=OBSERVED
+          echo Q06_OBSERVER_EXACT_ALL_GATES=PASS
