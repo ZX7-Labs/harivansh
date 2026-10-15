@@ -1,0 +1,55 @@
+name: Q06 Task8 isolated case canary Rustfmt private encrypted envelope
+on:
+  push:
+    branches: [build/noerith-q06-task8-case-isolation-20261015]
+    paths: [.github/workflows/noerith-q06-task8-case-isolation-private-fmt.yml]
+permissions:
+  contents: read
+jobs:
+  encrypted-private-diagnostics:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      TARGET_SHA: af265da9aac3a0e264bc1f23860cfe98f0e983e3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: bash tests/test-noerith-relay-contract.sh
+      - name: Read-only ephemeral pinned private checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Canonical format and independent isolated test in private only
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          D="${RUNNER_TEMP}/q06-task8-private-forensics"
+          mkdir -p "$D"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy --no-self-update >"$D/toolchain.log" 2>&1
+          cd "$ROOT"
+          set +e
+          cargo +1.98.1 fmt --manifest-path tools/q06-memory-context-eval/Cargo.toml >"$D/format.log" 2>&1
+          FMT_CODE=$?
+          git diff --binary -- tools/q06-memory-context-eval >"$D/format.patch"
+          python3 tools/verify_isolated_pinned_crate_hermetic.py tools/q06-memory-context-eval >"$D/hermetic-on-formatted-tree.log" 2>&1
+          HERMETIC_CODE=$?
+          set -e
+          printf 'formatter=%s\nhermetic_after_ephemeral_format=%s\n' "$FMT_CODE" "$HERMETIC_CODE" >"$D/status.txt"
+          if test "$FMT_CODE" = 0; then echo Q06_TASK8_PRIVATE_CANONICAL_FORMAT_EXECUTED=PASS; else echo Q06_TASK8_PRIVATE_CANONICAL_FORMAT_EXECUTED=FAIL; fi
+          if test "$HERMETIC_CODE" = 0; then echo Q06_TASK8_EPHEMERAL_HERMETIC_AFTER_FORMAT=PASS; else echo Q06_TASK8_EPHEMERAL_HERMETIC_AFTER_FORMAT=FAIL; fi
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          tar -C "$D" -cf "${RUNNER_TEMP}/q06-task8-private-diagnostic.tar" .
+          openssl cms -encrypt -binary -aes256 -outform DER -in "${RUNNER_TEMP}/q06-task8-private-diagnostic.tar" -out "${RUNNER_TEMP}/q06-task8-private-diagnostic.cms" "${GITHUB_WORKSPACE}/certs/q06-task8-local-receiver-20261015-v2.pem"
+          rm -rf "$D" "${RUNNER_TEMP}/q06-task8-private-diagnostic.tar"
+          echo Q06_TASK8_PRIVATE_DIAGNOSTICS_CIPHERTEXT_ONLY=PASS
+      - name: Upload temporary ciphertext only
+        uses: actions/upload-artifact@v4
+        with:
+          name: q06-task8-case-isolation-forensics-ciphertext
+          path: ${{ runner.temp }}/q06-task8-private-diagnostic.cms
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
