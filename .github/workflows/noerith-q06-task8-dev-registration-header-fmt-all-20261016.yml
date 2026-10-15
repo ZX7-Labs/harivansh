@@ -1,0 +1,58 @@
+name: Q06 registration header private formatter all-file metadata only
+on:
+  push:
+    branches: [build/noerith-q06-task8-dev-seedfile-20261015]
+    paths: [.github/workflows/noerith-q06-task8-dev-registration-header-fmt-all-20261016.yml]
+permissions:
+  contents: read
+jobs:
+  exact-private-format-metadata:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      TARGET_SHA: 2ec28236d114e1567b761da3cbd5c47b0cc06769
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: bash tests/test-noerith-relay-contract.sh
+      - name: Ephemeral private read-only exact checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Only format hunk coordinates and basename metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --component rustfmt --no-self-update >"${RUNNER_TEMP}/rust-install-private.log" 2>&1
+          cd "$ROOT"
+          cargo +1.98.1 fmt --manifest-path tools/q06-memory-context-eval/Cargo.toml >"${RUNNER_TEMP}/private-fmt.log" 2>&1
+          python3 - <<'PY'
+          import re, subprocess
+          files = subprocess.check_output(["git", "diff", "--name-only", "--",
+                                           "tools/q06-memory-context-eval/"], text=True).splitlines()
+          if len(files) > 15:
+              raise SystemExit("Q06_FMT_ALL_EXCESSIVE_FILE_COUNT")
+          print("Q06_FMT_ALL_CHANGED_COUNT=" + str(len(files)))
+          for path in files:
+              if not path.startswith("tools/q06-memory-context-eval/"):
+                  raise SystemExit("Q06_FMT_ALL_OUT_OF_ROOT")
+              diff = subprocess.check_output(
+                  ["git", "diff", "--unified=0", "--", path], text=True)
+              hunks = []
+              for line in diff.splitlines():
+                  if line.startswith("@@"):
+                      m = re.match(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@", line)
+                      if not m:
+                          raise SystemExit("Q06_FMT_ALL_BAD_HUNK")
+                      hunks.append(":".join(str(int(x or 1)) for x in m.groups()))
+              if len(hunks) > 50:
+                  raise SystemExit("Q06_FMT_ALL_HUNK_BOUND")
+              print("Q06_FMT_ALL_PATH=" + path)
+              for hunk in hunks:
+                  print("Q06_FMT_ALL_HUNK=" + hunk)
+          PY
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          echo Q06_FMT_ALL_SOURCE_FREE_COORDINATES=PASS
