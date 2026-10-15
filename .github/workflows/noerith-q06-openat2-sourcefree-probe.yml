@@ -1,0 +1,72 @@
+name: Q06 generic source-free rustix openat2 kernel probe
+on:
+  push:
+    branches: [build/noerith-q06-task8-dev-seedfile-20261015]
+    paths: [.github/workflows/noerith-q06-openat2-sourcefree-probe.yml]
+permissions:
+  contents: read
+jobs:
+  source-free-openat2-probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: bash tests/test-noerith-relay-contract.sh
+      - name: Install exact compiler
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal --no-self-update >"${RUNNER_TEMP}/q06-openat2-toolchain.log" 2>&1
+      - name: Evaluate generic third-party API without private checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="${RUNNER_TEMP}/sourcefree-openat2"
+          mkdir -p "$D/src"
+          cat >"$D/Cargo.toml" <<'TOML'
+          [package]
+          name = "sourcefree-openat2-api-probe"
+          version = "0.0.0"
+          edition = "2024"
+          publish = false
+          [workspace]
+          [dependencies]
+          rustix = { version = "=1.1.5", default-features = false, features = ["fs"] }
+          TOML
+          cat >"$D/src/main.rs" <<'RUST'
+          use rustix::fs::{openat2, Mode, OFlags, ResolveFlags};
+          use std::fs;
+          use std::os::unix::fs::symlink;
+          use std::path::Path;
+          fn main() {
+              let root = std::env::temp_dir().join(format!(
+                  "generic-openat2-{}", std::process::id()
+              ));
+              let real = root.join("real");
+              let alias = root.join("alias");
+              fs::create_dir(&root).unwrap();
+              fs::create_dir(&real).unwrap();
+              fs::write(real.join("fixture"), b"synthetic-not-a-secret").unwrap();
+              symlink(&real, &alias).unwrap();
+              let anchor = fs::File::open(&root).unwrap();
+              let oflags = OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NONBLOCK | OFlags::NOFOLLOW;
+              let resolve = ResolveFlags::BENEATH |
+                  ResolveFlags::NO_SYMLINKS | ResolveFlags::NO_MAGICLINKS;
+              assert!(openat2(&anchor, Path::new("real/fixture"), oflags, Mode::empty(), resolve).is_ok());
+              assert!(openat2(&anchor, Path::new("alias/fixture"), oflags, Mode::empty(), resolve).is_err());
+              assert!(openat2(&anchor, Path::new("../fixture"), oflags, Mode::empty(), resolve).is_err());
+              assert!(openat2(&anchor, Path::new("/etc/passwd"), oflags, Mode::empty(), resolve).is_err());
+              fs::remove_file(&alias).unwrap();
+              fs::remove_file(real.join("fixture")).unwrap();
+              fs::remove_dir(&real).unwrap();
+              fs::remove_dir(&root).unwrap();
+          }
+          RUST
+          cargo +1.98.1 generate-lockfile --manifest-path "$D/Cargo.toml" >"${RUNNER_TEMP}/openat2-lock.log" 2>&1
+          cargo +1.98.1 run --manifest-path "$D/Cargo.toml" --locked --quiet >"${RUNNER_TEMP}/openat2-run.log" 2>&1
+          cargo +1.98.1 tree --manifest-path "$D/Cargo.toml" --locked --prefix none >"${RUNNER_TEMP}/openat2-dep-tree.log" 2>&1
+          echo Q06_SOURCE_FREE_RUSTIX_115_OPENAT2=PASS
+          echo "Q06_THIRD_PARTY_PACKAGE_COUNT=$(wc -l < "${RUNNER_TEMP}/openat2-dep-tree.log")"
+          sha256sum "$D/Cargo.lock" | cut -d' ' -f1 | sed 's/^/Q06_SOURCE_FREE_LOCK_SHA256=/'
