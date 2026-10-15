@@ -92,7 +92,7 @@ jobs:
               items = tomllib.load(stream)["package"]
           third_party = {"rustix", "linux-raw-sys", "bitflags"}
           for package in items:
-              if package["name"] in third_party:
+              if package["name"] != "sourcefree-openat2-api-probe":
                   print("Q06_PUBLIC_THIRD_PARTY_LOCK=" + json.dumps(package, sort_keys=True))
           if {item["name"] for item in items if item["name"] in third_party} != third_party:
               raise SystemExit("INCOMPLETE_THIRD_PARTY_LOCK")
