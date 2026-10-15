@@ -1,0 +1,50 @@
+name: NOERITH Q06 terminal inert observation 21 assertion mutant qualification
+
+on:
+  push:
+    branches:
+      - build/noerith-q06-terminal-observe-20261015
+    paths:
+      - .github/workflows/noerith-q06-terminal-observe-mutants.yml
+
+permissions:
+  contents: read
+
+jobs:
+  private-validator-mutants:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      TARGET_SHA: 20bbfa7bd69f3a1b333aae06850b3dd5a10076dd
+    steps:
+      - name: Checkout source-free public relay
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Established relay privacy preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tests/test-noerith-relay-contract.sh
+          echo Q06_TASK5_MUTANT_RELAY_PRIVACY=PASS
+
+      - name: Exact read-only private source checkout
+        shell: bash
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+
+      - name: Pinned assertion-sensitive private source mutants
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          cd "$ROOT"
+          rustup toolchain install 1.98.1 --profile minimal --no-self-update \
+            >"${RUNNER_TEMP}/q06-task5-mutant-toolchain.log" 2>&1
+          python3 -B tools/verify_q06_task5_validator_mutants.py
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --exit-code --quiet
+          echo Q06_TASK5_ASSERTION_MUTANTS=PASS
