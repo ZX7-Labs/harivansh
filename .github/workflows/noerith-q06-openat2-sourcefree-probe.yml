@@ -84,3 +84,16 @@ jobs:
           echo Q06_SOURCE_FREE_RUSTIX_115_OPENAT2=PASS
           echo "Q06_THIRD_PARTY_PACKAGE_COUNT=$(wc -l < "${RUNNER_TEMP}/openat2-dep-tree.log")"
           sha256sum "$D/Cargo.lock" | cut -d' ' -f1 | sed 's/^/Q06_SOURCE_FREE_LOCK_SHA256=/'
+          python3 - "$D/Cargo.lock" <<'PY'
+          import json
+          import sys
+          import tomllib
+          with open(sys.argv[1], "rb") as stream:
+              items = tomllib.load(stream)["package"]
+          third_party = {"rustix", "linux-raw-sys", "bitflags"}
+          for package in items:
+              if package["name"] in third_party:
+                  print("Q06_PUBLIC_THIRD_PARTY_LOCK=" + json.dumps(package, sort_keys=True))
+          if {item["name"] for item in items if item["name"] in third_party} != third_party:
+              raise SystemExit("INCOMPLETE_THIRD_PARTY_LOCK")
+          PY
