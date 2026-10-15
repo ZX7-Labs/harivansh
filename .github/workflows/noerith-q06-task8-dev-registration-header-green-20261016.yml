@@ -1,0 +1,51 @@
+name: Q06 registration header exact private Rust green gates
+on:
+  push:
+    branches: [build/noerith-q06-task8-dev-seedfile-20261015]
+    paths: [.github/workflows/noerith-q06-task8-dev-registration-header-green-20261016.yml]
+permissions:
+  contents: read
+jobs:
+  source-free-exact-rust:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      TARGET_SHA: 7bf965f0c7a7cc6580c02b1b8063159851cd8c01
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Source-free relay contract
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Ephemeral read-only exact private checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Focused and full exact Rust test, strict Clippy, fmt
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          LOGDIR="${RUNNER_TEMP}/q06-registration-green-logs"
+          mkdir -p "$LOGDIR"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          cd "$ROOT"
+          check() {
+            local name="$1"
+            shift
+            if "$@" >"$LOGDIR/$name.log" 2>&1; then
+              echo "Q06_REG_HEADER_${name}=PASS"
+            else
+              echo "Q06_REG_HEADER_${name}=FAIL"
+              return 1
+            fi
+          }
+          check toolchain rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy --no-self-update
+          export RUSTUP_TOOLCHAIN=1.98.1
+          check focused cargo test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked --test registered_case_header_dev
+          check full-crate cargo test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked
+          check strict-clippy cargo clippy --manifest-path tools/q06-memory-context-eval/Cargo.toml --all-targets --locked -- -D warnings
+          check fmt cargo fmt --manifest-path tools/q06-memory-context-eval/Cargo.toml -- --check
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --exit-code --quiet
+          echo Q06_REG_HEADER_EXACT_ALL_GATES=PASS
