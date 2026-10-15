@@ -1,0 +1,46 @@
+name: Q06 independent validator source catalog cache assertion RED
+on:
+  push:
+    branches: [build/noerith-q06-task8-dev-seedfile-20261015]
+    paths: [.github/workflows/noerith-q06-validator-source-lookup-cache-red-20261016.yml]
+permissions:
+  contents: read
+jobs:
+  exact-private-validator-assertion-red:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      TARGET_SHA: 42369b0e9c356bdf6e67bff11d9f430b72acb1ae
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify source-free relay
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Ephemeral exact private read-only checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Observe assertion-only Rust RED, not compile or setup errors
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          LOG="${RUNNER_TEMP}/validator-private-cache-red.log"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --no-self-update >"${RUNNER_TEMP}/rust-private-install.log" 2>&1
+          cd "$ROOT"
+          set +e
+          cargo +1.98.1 test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked --lib immutable_source_owned_family_lookup_does_not_reparse_for_repeated_cases >"$LOG" 2>&1
+          RESULT=$?
+          set -e
+          test "$RESULT" -ne 0
+          if grep -Eq '^error\\[E[0-9]+\\]|^error: could not compile|^error: failed to' "$LOG"; then
+            echo Q06_VALIDATOR_CACHE_ASSERTION_RED=INVALID_COMPILER_FAILURE
+            exit 1
+          fi
+          grep -Fq 'test validator::validator_catalog_parse_resource_contract_tests::immutable_source_owned_family_lookup_does_not_reparse_for_repeated_cases ... FAILED' "$LOG"
+          grep -Fq 'test result: FAILED' "$LOG"
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --exit-code --quiet
+          echo Q06_VALIDATOR_CACHE_ASSERTION_RED=OBSERVED
