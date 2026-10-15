@@ -39,9 +39,9 @@ jobs:
           rustup toolchain install 1.98.1 --profile minimal --component rustfmt --no-self-update >"${RUNNER_TEMP}/rustfmt-install-private.log" 2>&1
           cd "$ROOT"
           cargo +1.98.1 fmt --manifest-path tools/q06-memory-context-eval/Cargo.toml >"${RUNNER_TEMP}/q06-rustfmt-private.log" 2>&1
-          git diff -- tools/q06-memory-context-eval/src/realization.rs tools/q06-memory-context-eval/tests/realization_dev_assertion_turn.rs > "$PATCH"
+          git diff -- tools/q06-memory-context-eval/src/realization.rs tools/q06-memory-context-eval/tests/realization_dev_correction_turn.rs tools/q06-memory-context-eval/tests/realization_phrasebank.rs > "$PATCH"
           test -s "$PATCH"
-          OTHER="$(git diff --name-only -- . ':!tools/q06-memory-context-eval/src/realization.rs' ':!tools/q06-memory-context-eval/tests/realization_dev_assertion_turn.rs')"
+          OTHER="$(git diff --name-only -- . ':!tools/q06-memory-context-eval/src/realization.rs' ':!tools/q06-memory-context-eval/tests/realization_dev_correction_turn.rs' ':!tools/q06-memory-context-eval/tests/realization_phrasebank.rs')"
           test -z "$OTHER"
           gzip -9 -c "$PATCH" | openssl cms -encrypt -binary -aes256 -outform DER \
             -recip "${GITHUB_WORKSPACE}/certs/q06-dev-correction-20261015.pem" \
