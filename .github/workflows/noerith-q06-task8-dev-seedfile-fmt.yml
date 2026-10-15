@@ -42,7 +42,7 @@ jobs:
           if test "$HERMETIC_CODE" = 0; then echo Q06_TASK8_EPHEMERAL_HERMETIC_AFTER_FORMAT=PASS; else echo Q06_TASK8_EPHEMERAL_HERMETIC_AFTER_FORMAT=FAIL; fi
           test "$(git rev-parse HEAD)" = "$TARGET_SHA"
           tar -C "$D" -cf "${RUNNER_TEMP}/q06-task8-private-diagnostic.tar" .
-          openssl cms -encrypt -binary -aes256 -outform DER -in "${RUNNER_TEMP}/q06-task8-private-diagnostic.tar" -out "${RUNNER_TEMP}/q06-task8-private-diagnostic.cms" "${GITHUB_WORKSPACE}/certs/q06-task8-local-receiver-20261015-v2.pem"
+          openssl cms -encrypt -binary -aes256 -outform DER -in "${RUNNER_TEMP}/q06-task8-private-diagnostic.tar" -out "${RUNNER_TEMP}/q06-task8-private-diagnostic.cms" "${GITHUB_WORKSPACE}/certs/q06-task8-seedfile-local-private-diagnostics-v3.pem"
           rm -rf "$D" "${RUNNER_TEMP}/q06-task8-private-diagnostic.tar"
           echo Q06_TASK8_PRIVATE_DIAGNOSTICS_CIPHERTEXT_ONLY=PASS
       - name: Upload temporary ciphertext only
