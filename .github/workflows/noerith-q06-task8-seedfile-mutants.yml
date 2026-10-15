@@ -1,4 +1,4 @@
-name: Q06 Task8 source-owned development seed file five assertion mutants
+name: Q06 Task8 development seed-file seven assertion mutants
 on:
   push:
     branches: [build/noerith-q06-task8-dev-seedfile-20261015]
@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
-      TARGET_SHA: eb427e4ab395b9835786500f3a8274d9c41cf43a
+      TARGET_SHA: 2f334775f0936cfba5cbc02257c48f341761dfe8
     steps:
       - uses: actions/checkout@v4
         with:
@@ -20,7 +20,7 @@ jobs:
         env:
           PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
         run: bash scripts/checkout-noerith-private.sh
-      - name: Reject compiler failures and require all six named Rust assertion kills
+      - name: Reject compiler failures and require seven named Rust assertion kills
         shell: bash
         run: |
           set -euo pipefail
@@ -34,9 +34,9 @@ jobs:
             echo Q06_SEEDFILE_MUTANT_GATE=FAIL
             exit 1
           }
-          grep -Fxq 'Q06_SEEDFILE_MUTANT_QUALIFICATION=PASS count=5' "$LOG"
-          test "$(grep -c '=KILLED_BY_ASSERTION' "$LOG")" -eq 5
+          grep -Fxq 'Q06_SEEDFILE_MUTANT_QUALIFICATION=PASS count=7' "$LOG"
+          test "$(grep -c '=KILLED_BY_ASSERTION' "$LOG")" -eq 7
           grep '^Q06_SEEDFILE_MUTANT_[a-z-]*=KILLED_BY_ASSERTION$' "$LOG"
           test "$(git rev-parse HEAD)" = "$TARGET_SHA"
           git diff --exit-code --quiet
-          echo Q06_SEEDFILE_FIVE_ASSERTION_MUTANTS=PASS
+          echo Q06_SEEDFILE_SEVEN_ASSERTION_MUTANTS=PASS
