@@ -1,4 +1,4 @@
-name: Q06 retained partial exact Rustfmt hunk metadata only
+name: Q06 development local observer private rustfmt coordinates only
 on:
   push:
     branches: [build/noerith-q06-task8-dev-seedfile-20261015]
@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
-      TARGET_SHA: 12bd6565f95e5e18be85bc156fbe5444fefd737c
+      TARGET_SHA: 2712b5f2aa097c84a8ed6086852af2bb90a1d8d9
     steps:
       - uses: actions/checkout@v4
         with:
@@ -20,32 +20,31 @@ jobs:
         env:
           PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
         run: bash scripts/checkout-noerith-private.sh
-      - name: Only formatter hunk coordinates are permitted to be public
+      - name: Only Rustfmt hunk coordinates, never private file contents
         shell: bash
         run: |
           set -euo pipefail
           ROOT="${RUNNER_TEMP}/noerith-private-source"
-          FILE="tools/q06-memory-context-eval/tests/durable_custody_dev.rs"
-          LOG="${RUNNER_TEMP}/q06-private-rustfmt.log"
-          DIFF="${RUNNER_TEMP}/q06-private-rustfmt.diff"
+          LOG="${RUNNER_TEMP}/q06-observe-private-rustfmt.log"
           test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
           rustup toolchain install 1.98.1 --profile minimal --component rustfmt --no-self-update >"${RUNNER_TEMP}/toolchain-private.log" 2>&1
           cd "$ROOT"
           cargo +1.98.1 fmt --manifest-path tools/q06-memory-context-eval/Cargo.toml >"$LOG" 2>&1
-          git diff --unified=0 -- "$FILE" >"$DIFF"
-          python3 - "$DIFF" <<'PY'
-          import re, sys
-          count = 0
-          for line in open(sys.argv[1], encoding="utf-8"):
-              if line.startswith("@@"):
-                  match = re.match(r"^@@ -([0-9]+)(?:,([0-9]+))? \+([0-9]+)(?:,([0-9]+))? @@", line)
-                  if match is None:
-                      raise SystemExit("Q06_DURABLE_FMT_HUNK_PARSE_ERROR")
-                  count += 1
-                  print("Q06_DURABLE_FMT_HUNK=" + ":".join(str(int(x or 1)) for x in match.groups()))
-          if count > 80:
-              raise SystemExit("Q06_DURABLE_FMT_BOUNDS_ERROR")
-          print("Q06_DURABLE_FMT_HUNK_COUNT=" + str(count))
+          python3 - <<'PY'
+          import re, subprocess
+          cases = (
+              ('SOURCE', 'tools/q06-memory-context-eval/src/durable_custody_dev.rs'),
+              ('TEST', 'tools/q06-memory-context-eval/tests/durable_custody_dev.rs'),
+              ('ATTACK', 'tools/q06-memory-context-eval/tests/durable_observation_adversarial_dev.rs'),
+          )
+          for label, path in cases:
+              diff = subprocess.check_output(['git', 'diff', '--unified=0', '--', path], text=True)
+              hunks = re.findall(r'^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@', diff, re.M)
+              if len(hunks) > 40:
+                  raise SystemExit('Q06_OBSERVER_FMT_UNEXPECTED_BOUNDS')
+              for coordinates in hunks:
+                  print('Q06_OBSERVER_FMT_HUNK_' + label + '=' + ':'.join(str(int(n or 1)) for n in coordinates))
+              print('Q06_OBSERVER_FMT_COUNT_' + label + '=' + str(len(hunks)))
           PY
           test "$(git rev-parse HEAD)" = "$TARGET_SHA"
-          echo Q06_DURABLE_FMT_COORDINATE_ONLY=PASS
+          echo Q06_OBSERVER_FMT_COORDINATES_ONLY=PASS
