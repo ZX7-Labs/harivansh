@@ -1,0 +1,42 @@
+name: Q06 Task8 integrated typed semantic custody seven assertion mutants
+on:
+  push:
+    branches: [build/noerith-q06-task8-dev-domain-typed-20261015]
+    paths: [.github/workflows/noerith-q06-task8-typed-custody-mutants.yml]
+permissions:
+  contents: read
+jobs:
+  exact-source-rust-mutations:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      TARGET_SHA: 89b6ae1474b3ffd74f29eb2519b96d91fef0cb48
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Source-free public boundary
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Read-only exact private checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Actual isolated Rust named-assertion kills
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          LOG="${RUNNER_TEMP}/q06-task8-private-mutants.log"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --no-self-update >"${RUNNER_TEMP}/private-toolchain.log" 2>&1
+          cd "$ROOT"
+          python3 tools/verify_q06_task8_dev_custody_mutants.py >"$LOG" 2>&1 || {
+            echo Q06_TASK8_CUSTODY_MUTANT_GATE=FAIL
+            exit 1
+          }
+          grep -Fxq 'Q06_TASK8_CUSTODY_MUTANT_QUALIFICATION=PASS count=7' "$LOG"
+          test "$(grep -c '=KILLED_BY_ASSERTION' "$LOG")" -eq 7
+          grep '^Q06_TASK8_CUSTODY_MUTANT_[a-z-]*=KILLED_BY_ASSERTION$' "$LOG"
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --exit-code --quiet
+          echo Q06_TASK8_CUSTODY_7_ASSERTION_MUTANTS=PASS
