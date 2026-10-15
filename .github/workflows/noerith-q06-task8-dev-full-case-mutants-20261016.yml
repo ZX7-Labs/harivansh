@@ -1,0 +1,43 @@
+name: Q06 complete-case exact private six real assertion mutants
+on:
+  push:
+    branches: [build/noerith-q06-task8-dev-seedfile-20261015]
+    paths: [.github/workflows/noerith-q06-task8-dev-full-case-mutants-20261016.yml]
+permissions:
+  contents: read
+jobs:
+  private-exact-full-case-mutants:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      TARGET_SHA: de16c84c8511b9f0e76ebe792ed8680847182553
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Public source-free relay contract
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Exact private ephemeral read-only source
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Six named real Rust assertion mutations only
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          LOG="${RUNNER_TEMP}/q06-full-case-mutants-private.log"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --no-self-update >"${RUNNER_TEMP}/private-rust-install.log" 2>&1
+          cd "$ROOT"
+          if ! python3 tools/verify_q06_task8_dev_full_case_mutants.py >"$LOG" 2>&1; then
+            grep -E '^Q06_FULL_CASE_MUTANT_QUALIFICATION=FAIL (Q06_FULL_CASE_MUTANT_[a-z-]+=(SOURCE_MISMATCH|SURVIVED|WRONG_ASSERTION|COMPILER_FAILURE_NOT_KILL)|[A-Za-z]+Error)$' "$LOG" || true
+            echo Q06_FULL_CASE_MUTANTS_EXACT_SHA=FAIL
+            exit 1
+          fi
+          grep -Fxq 'Q06_FULL_CASE_MUTANT_QUALIFICATION=PASS count=6' "$LOG"
+          test "$(grep -Ec '^Q06_FULL_CASE_MUTANT_[a-z-]+=KILLED_BY_ASSERTION$' "$LOG")" -eq 6
+          grep -E '^Q06_FULL_CASE_MUTANT_[a-z-]+=KILLED_BY_ASSERTION$' "$LOG"
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --exit-code --quiet
+          echo Q06_FULL_CASE_MUTANTS_EXACT_SHA=PASS
