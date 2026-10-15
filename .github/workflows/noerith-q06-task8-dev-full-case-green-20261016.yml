@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 42
     env:
-      TARGET_SHA: 8ca664f76a3cbfb6280d42a98bb624483b37c400
+      TARGET_SHA: c795df0d3b4f914b12bddaeb389402f09263913f
     steps:
       - uses: actions/checkout@v4
         with:
@@ -42,7 +42,7 @@ jobs:
           }
           check toolchain rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy --no-self-update
           export RUSTUP_TOOLCHAIN=1.98.1
-          check focused cargo test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked --test full_case_commitment_dev
+          check focused cargo test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked --test full_case_commitment_dev --test full_case_commitment_exact_adversarial_dev
           check full-crate cargo test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked
           check strict-clippy cargo clippy --manifest-path tools/q06-memory-context-eval/Cargo.toml --all-targets --locked -- -D warnings
           check fmt cargo fmt --manifest-path tools/q06-memory-context-eval/Cargo.toml -- --check
