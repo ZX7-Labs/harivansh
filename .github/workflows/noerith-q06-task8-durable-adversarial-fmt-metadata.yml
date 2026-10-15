@@ -1,0 +1,51 @@
+name: Q06 durable adversarial synthetic tests source-free formatting metadata
+on:
+  push:
+    branches: [build/noerith-q06-task8-dev-seedfile-20261015]
+    paths: [.github/workflows/noerith-q06-task8-durable-adversarial-fmt-metadata.yml]
+permissions:
+  contents: read
+jobs:
+  rustfmt-coordinate-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      TARGET_SHA: 60ff5561678b1ef5a956b61e4a8f41ed0a5db223
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: bash tests/test-noerith-relay-contract.sh
+      - name: Exact private read-only source
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Only formatter hunk coordinates are permitted to be public
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          FILE="tools/q06-memory-context-eval/tests/durable_custody_adversarial_dev.rs"
+          LOG="${RUNNER_TEMP}/q06-private-rustfmt.log"
+          DIFF="${RUNNER_TEMP}/q06-private-rustfmt.diff"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --component rustfmt --no-self-update >"${RUNNER_TEMP}/toolchain-private.log" 2>&1
+          cd "$ROOT"
+          cargo +1.98.1 fmt --manifest-path tools/q06-memory-context-eval/Cargo.toml >"$LOG" 2>&1
+          git diff --unified=0 -- "$FILE" >"$DIFF"
+          python3 - "$DIFF" <<'PY'
+          import re, sys
+          count = 0
+          for line in open(sys.argv[1], encoding="utf-8"):
+              if line.startswith("@@"):
+                  match = re.match(r"^@@ -([0-9]+)(?:,([0-9]+))? \+([0-9]+)(?:,([0-9]+))? @@", line)
+                  if match is None:
+                      raise SystemExit("Q06_DURABLE_FMT_HUNK_PARSE_ERROR")
+                  count += 1
+                  print("Q06_DURABLE_FMT_HUNK=" + ":".join(str(int(x or 1)) for x in match.groups()))
+          if count > 80:
+              raise SystemExit("Q06_DURABLE_FMT_BOUNDS_ERROR")
+          print("Q06_DURABLE_FMT_HUNK_COUNT=" + str(count))
+          PY
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          echo Q06_DURABLE_FMT_COORDINATE_ONLY=PASS
