@@ -1,0 +1,63 @@
+name: NOERITH Q06 minimal semantic twin Rustfmt encrypted
+
+on:
+  push:
+    branches:
+      - build/noerith-q06-validated-recall-20261015
+    paths:
+      - .github/workflows/noerith-q06-twin-minimal-history-fmt.yml
+
+permissions:
+  contents: read
+
+jobs:
+  encrypted-format-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      TARGET_SHA: fc1e4b036a41e50f16ad82ccda9234d3fd987826
+    steps:
+      - name: Checkout source-free public relay
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Privacy preflight
+        shell: bash
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Read-only pinned private checkout
+        shell: bash
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Format only ephemeral private checkout then encrypt the exact patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          PATCH="${RUNNER_TEMP}/q06-private-rustfmt.patch"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --component rustfmt --no-self-update >"${RUNNER_TEMP}/rustfmt-install-private.log" 2>&1
+          cd "$ROOT"
+          cargo +1.98.1 fmt --manifest-path tools/q06-memory-context-eval/Cargo.toml >"${RUNNER_TEMP}/q06-rustfmt-private.log" 2>&1
+          git diff -- tools/q06-memory-context-eval/src/realization.rs tools/q06-memory-context-eval/tests/realization_dev_recall_surface.rs > "$PATCH"
+          test -s "$PATCH"
+          OTHER="$(git diff --name-only -- . ':!tools/q06-memory-context-eval/src/realization.rs' ':!tools/q06-memory-context-eval/tests/realization_dev_recall_surface.rs')"
+          test -z "$OTHER"
+          gzip -9 -c "$PATCH" | openssl cms -encrypt -binary -aes256 -outform DER \
+            -recip "${GITHUB_WORKSPACE}/certs/q06-recipient-20261015.pem" \
+            -out "${RUNNER_TEMP}/q06-encrypted-format-patch.cms"
+          rm -f "$PATCH"
+          echo Q06_FMT_CIPHERTEXT_BEGIN
+          base64 -w 0 "${RUNNER_TEMP}/q06-encrypted-format-patch.cms"
+          echo
+          echo Q06_FMT_CIPHERTEXT_END
+          echo Q06_PRIVATE_FMT_PATCH_CIPHERTEXT_ONLY=PASS
+
+      - name: Export encrypted patch only for offline private review
+        uses: actions/upload-artifact@v4
+        with:
+          name: q06-validated-recall-formatter-ciphertext
+          path: ${{ runner.temp }}/q06-encrypted-format-patch.cms
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
