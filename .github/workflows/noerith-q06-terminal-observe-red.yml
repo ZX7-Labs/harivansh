@@ -1,0 +1,48 @@
+name: Q06 terminal independent Observe ordering assertion RED
+on:
+  push:
+    branches: [build/noerith-q06-terminal-observe-20261015]
+    paths: [.github/workflows/noerith-q06-terminal-observe-red.yml]
+permissions:
+  contents: read
+jobs:
+  exact-private-assertion:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      TARGET_SHA: 8050bafc0737390d97ed2afc9e3b8063b2fc3eb8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: bash tests/test-noerith-relay-contract.sh
+      - name: Exact private read-only checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Require assertion RED and opposite-direction real value PASS
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          LOG="${RUNNER_TEMP}/q06-multibinding-private.log"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --no-self-update >"${RUNNER_TEMP}/toolchain.log" 2>&1
+          cd "$ROOT"
+          set +e
+          cargo +1.98.1 test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked --test validator_terminal_observe_order >"$LOG" 2>&1
+          result=$?
+          set -e
+          test "$result" -ne 0
+          grep -Fq 'test swapping_two_unreferenced_terminal_observes_is_not_a_second_independent_sample ... FAILED' "$LOG"
+          grep -Fq 'test changing_a_real_terminal_observer_subject_remains_semantically_distinct ... ok' "$LOG"
+          grep -Fq 'Q06_TERMINAL_OBSERVE_ORDER_IS_NOT_INDEPENDENT_ASSERTION_RED' "$LOG"
+          grep -Fq 'test result: FAILED' "$LOG"
+          if grep -Eq 'error\[E[0-9]+\]|error: could not compile' "$LOG"; then
+            echo Q06_OBSERVE_ORDER_COMPILE_ERROR_NOT_RED
+            exit 1
+          fi
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --exit-code --quiet
+          echo Q06_TERMINAL_OBSERVE_ASSERTION_RED=OBSERVED
+          echo Q06_TERMINAL_OBSERVER_REAL_DIFFERENCE_POSITIVE=PASS
