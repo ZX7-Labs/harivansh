@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
-      TARGET_SHA: 40911d2e46af7e8b8d2c849dcc3d16394e720974
+      TARGET_SHA: f05fdcd0bab03f309dd60e18c2cb5cf9463b3a90
     steps:
       - uses: actions/checkout@v4
         with:
@@ -40,7 +40,7 @@ jobs:
             fi
             exit 1
           fi
-          for name in two_independent_processes_must_not_both_claim_same_identity partial_existing_claim_record_must_not_be_overwritten_or_reclaimed different_evaluation_identities_can_claim_independently; do
+          for name in two_independent_processes_must_not_both_claim_same_identity partial_existing_claim_record_must_not_be_overwritten_or_reclaimed different_evaluation_identities_can_claim_independently persisted_record_must_bind_exact_semantic_digest_and_omit_raw_provenance; do
             grep -Fq "test $name ... ok" "$LOG"
             echo "Q06_DURABLE_ADVERSARIAL_${name}=PASS"
           done
