@@ -1,0 +1,42 @@
+name: Q06 Task7 five actual assertion-sensitive sibling mutants
+on:
+  push:
+    branches: [build/noerith-q06-task7-dev-sibling-20261015]
+    paths: [.github/workflows/noerith-q06-task7-dev-sibling-mutants.yml]
+permissions:
+  contents: read
+jobs:
+  pinned-private-mutants:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      TARGET_SHA: dfa2cf6e963e799ef3af949a1213c89f27f1b2ca
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Public source-free privacy contract
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Ephemeral private exact SHA checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Real Rust assertion mutations only
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          LOG="${RUNNER_TEMP}/q06-task7-private-mutations.log"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --no-self-update >"${RUNNER_TEMP}/private-toolchain.log" 2>&1
+          cd "$ROOT"
+          python3 tools/verify_q06_task7_dev_sibling_mutants.py >"$LOG" 2>&1 || {
+            echo Q06_TASK7_MUTATION_GATE=FAIL
+            exit 1
+          }
+          grep -Fxq 'Q06_TASK7_MUTANT_QUALIFICATION=PASS count=5' "$LOG"
+          test "$(grep -c '=KILLED_BY_ASSERTION' "$LOG")" -eq 5
+          grep '^Q06_TASK7_MUTANT_[a-z-]*=KILLED_BY_ASSERTION$' "$LOG"
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --exit-code --quiet
+          echo Q06_TASK7_FIVE_ASSERTION_MUTANTS=PASS
