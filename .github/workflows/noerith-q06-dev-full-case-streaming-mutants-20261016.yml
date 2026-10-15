@@ -1,4 +1,4 @@
-name: Q06 exact bounded streamed full case eight source assertion mutants
+name: Q06 exact bounded streamed full case ten source assertion mutants
 on:
   push:
     branches: [build/noerith-q06-task8-dev-seedfile-20261015]
@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 42
     env:
-      TARGET_SHA: 26ef84723397d66c0fb398db4c87f2200909e1e3
+      TARGET_SHA: 0d1cea40b95a789be4935123f941b02cd35b9e49
     steps:
       - uses: actions/checkout@v4
         with:
@@ -20,7 +20,7 @@ jobs:
         env:
           PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
         run: bash scripts/checkout-noerith-private.sh
-      - name: Eight actual Rust source SHA256 streaming assertion mutation kills
+      - name: Ten actual Rust source SHA256 streaming assertion mutation kills
         shell: bash
         run: |
           set -euo pipefail
@@ -31,12 +31,12 @@ jobs:
           cd "$ROOT"
           if ! python3 tools/verify_q06_dev_fullcase_root_streaming_mutants.py >"$LOG" 2>&1; then
             grep -E '^Q06_STREAM_MUTANT_QUALIFICATION=FAIL Q06_STREAM_MUTANT_[a-z0-9-]+=(SURVIVED|COMPILER_FAILURE_NOT_KILL|WRONG_ASSERTION|SOURCE_MISMATCH)$' "$LOG" || true
-            echo Q06_STREAM_EIGHT_MUTANTS_EXACT=FAIL
+            echo Q06_STREAM_TEN_MUTANTS_EXACT=FAIL
             exit 1
           fi
-          grep -Fxq 'Q06_STREAM_MUTANT_QUALIFICATION=PASS count=8' "$LOG"
-          test "$(grep -Ec '^Q06_STREAM_MUTANT_[a-z0-9-]+=KILLED_BY_ASSERTION$' "$LOG")" -eq 8
+          grep -Fxq 'Q06_STREAM_MUTANT_QUALIFICATION=PASS count=10' "$LOG"
+          test "$(grep -Ec '^Q06_STREAM_MUTANT_[a-z0-9-]+=KILLED_BY_ASSERTION$' "$LOG")" -eq 10
           grep -E '^Q06_STREAM_MUTANT_[a-z0-9-]+=KILLED_BY_ASSERTION$' "$LOG"
           test "$(git rev-parse HEAD)" = "$TARGET_SHA"
           git diff --exit-code --quiet
-          echo Q06_STREAM_EIGHT_MUTANTS_EXACT=PASS
+          echo Q06_STREAM_TEN_MUTANTS_EXACT=PASS
