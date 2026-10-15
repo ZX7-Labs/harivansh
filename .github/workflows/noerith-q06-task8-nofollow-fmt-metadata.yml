@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
-      TARGET_SHA: d6c2b50cfae617b1e86970a8c184489fb38c0c4f
+      TARGET_SHA: 2619efdb991dc97ea1423f7e159d37d80568a1dc
     steps:
       - uses: actions/checkout@v4
         with:
@@ -36,6 +36,8 @@ jobs:
           allowed = {
               "tools/q06-memory-context-eval/src/secret_seed_file.rs": "SRC",
               "tools/q06-memory-context-eval/tests/secret_seed_file_dev.rs": "TEST",
+              "tools/q06-memory-context-eval/src/secret_seed_root_directory.rs": "DIRFD_SRC",
+              "tools/q06-memory-context-eval/tests/seed_root_dir_dev.rs": "DIRFD_TEST",
           }
           label = None
           count = 0
