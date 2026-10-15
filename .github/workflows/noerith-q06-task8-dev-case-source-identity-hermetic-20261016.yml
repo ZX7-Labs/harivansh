@@ -1,0 +1,76 @@
+name: Q06 DEV registered header and source-registry exact hermetic
+on:
+  push:
+    branches: [build/noerith-q06-task8-dev-seedfile-20261015]
+    paths: [.github/workflows/noerith-q06-task8-dev-case-source-identity-hermetic-20261016.yml]
+permissions:
+  contents: read
+jobs:
+  isolated-private-q06:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      TARGET_SHA: 858f55325f7529d9a6dd2923ebc218479d947acb
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify public controller has no private source
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Ephemeral exact private read-only source
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Independently execute pinned hermetic verifier
+        id: hermetic
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          LOGDIR="${RUNNER_TEMP}/q06-case-source-identity-private"
+          mkdir -p "$LOGDIR"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          cd "$ROOT"
+          if ! rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy --no-self-update >"$LOGDIR/toolchain.log" 2>&1; then
+            echo Q06_CASE_SOURCE_HERMETIC_TOOLCHAIN=BLOCKED
+            exit 1
+          fi
+          export RUSTUP_TOOLCHAIN=1.98.1
+          if ! python3 tools/verify_isolated_pinned_crate_hermetic.py tools/q06-memory-context-eval >"$LOGDIR/hermetic.log" 2>&1; then
+            echo Q06_CASE_SOURCE_HERMETIC_VERIFIER=FAIL
+            exit 1
+          fi
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --exit-code --quiet
+          echo Q06_CASE_SOURCE_HERMETIC_PINNED=PASS
+      - name: Encrypt all private diagnostic logs
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          DIAG="${RUNNER_TEMP}/q06-case-source-identity-private"
+          TAR="${RUNNER_TEMP}/q06-case-source-identity-private.tar"
+          CIPHER="${RUNNER_TEMP}/q06-case-source-identity-private.cms"
+          mkdir -p "$DIAG"
+          tar -C "$DIAG" -cf "$TAR" .
+          openssl cms -encrypt -binary -aes256 -outform DER \
+            -in "$TAR" -out "$CIPHER" \
+            "${GITHUB_WORKSPACE}/certs/q06-task8-seedfile-local-private-diagnostics-v3.pem"
+          rm -rf "$DIAG" "$TAR"
+      - name: Upload ciphertext only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: q06-case-source-identity-private-diagnostics-ciphertext
+          path: ${{ runner.temp }}/q06-case-source-identity-private.cms
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+      - name: Fail closed unless pinned hermetic succeeded
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ steps.hermetic.outcome }}" = success
+          echo Q06_CASE_SOURCE_HERMETIC_EXACT_FINAL=PASS
