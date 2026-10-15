@@ -1,0 +1,35 @@
+name: Q06 source-owned family registry six exact private assertion mutants
+on:
+  push:
+    branches: [build/noerith-q06-task8-dev-seedfile-20261015]
+    paths: [.github/workflows/noerith-q06-task8-dev-family-registry-mutants-20261016.yml]
+permissions:
+  contents: read
+jobs:
+  source-free-private-family-mutants:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      TARGET_SHA: 858f55325f7529d9a6dd2923ebc218479d947acb
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Source-free control contract
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Read-only ephemeral pinned private source
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Real bounded Rust assertion mutations without log disclosure
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --no-self-update >"${RUNNER_TEMP}/private-rust-install.log" 2>&1
+          cd "$ROOT"
+          python3 tools/verify_q06_task8_dev_family_registry_mutants.py
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --exit-code --quiet
+          echo Q06_FAMILY_REGISTRY_SIX_MUTANTS_EXACT_SHA=PASS
