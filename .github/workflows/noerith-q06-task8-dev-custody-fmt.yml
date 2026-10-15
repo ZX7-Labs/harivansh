@@ -1,0 +1,43 @@
+name: Q06 Task8 custody private Rustfmt ciphertext-only receipt
+on:
+  push:
+    branches: [build/noerith-q06-task8-dev-custody-20261015]
+    paths: [.github/workflows/noerith-q06-task8-dev-custody-fmt.yml]
+permissions:
+  contents: read
+jobs:
+  pinned-formatted-difference:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      TARGET_SHA: 2497b0e944fec4c8cd506925347e3ebcb99f9711
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Public source-free boundary
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Ephemeral exact private checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Canonical Rustfmt delta kept private and encrypted
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --component rustfmt --no-self-update > "${RUNNER_TEMP}/q06-toolchain-private.log" 2>&1
+          cd "$ROOT"
+          cargo +1.98.1 fmt --manifest-path tools/q06-memory-context-eval/Cargo.toml > "${RUNNER_TEMP}/q06-fmt-private.log" 2>&1
+          git diff -- tools/q06-memory-context-eval/src/custody.rs tools/q06-memory-context-eval/tests/custody_dev_preflight.rs > "${RUNNER_TEMP}/q06-private-format.patch"
+          test -s "${RUNNER_TEMP}/q06-private-format.patch"
+          openssl cms -encrypt -binary -aes256 -outform DER -in "${RUNNER_TEMP}/q06-private-format.patch" -out "${RUNNER_TEMP}/q06-private-format.cms" "${GITHUB_WORKSPACE}/certs/q06-task7-dev-format-receiver-20261015.pem"
+          rm -f "${RUNNER_TEMP}/q06-private-format.patch" "${RUNNER_TEMP}/q06-fmt-private.log"
+          echo Q06_TASK7_PRIVATE_RUSTFMT_CIPHERTEXT_ONLY=PASS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: q06-task8-custody-rustfmt-ciphertext
+          path: ${{ runner.temp }}/q06-private-format.cms
+          if-no-files-found: error
+          retention-days: 1
