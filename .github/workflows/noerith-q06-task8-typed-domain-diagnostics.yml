@@ -1,0 +1,55 @@
+name: Q06 Task8 typed-domain private encrypted diagnostics
+on:
+  push:
+    branches: [build/noerith-q06-task8-dev-domain-typed-20261015]
+    paths: [.github/workflows/noerith-q06-task8-typed-domain-diagnostics.yml]
+permissions:
+  contents: read
+jobs:
+  encrypted-exact-source-qualification:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      TARGET_SHA: 70c85bb648265f3562f9de2409cf9d2c11b701aa
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: bash tests/test-noerith-relay-contract.sh
+      - name: Ephemeral pinned private read-only source
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Encrypt private Rust tests and formatter difference
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          OUT="${RUNNER_TEMP}/q06-task8-domain-diagnostics"
+          mkdir -p "$OUT"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy --no-self-update > "$OUT/toolchain.log" 2>&1
+          cd "$ROOT"
+          set +e
+          cargo +1.98.1 test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked --test custody_dev_preflight >"$OUT/focused.log" 2>&1
+          test_rc=$?
+          cargo +1.98.1 fmt --manifest-path tools/q06-memory-context-eval/Cargo.toml -- --check >"$OUT/fmtcheck.log" 2>&1
+          fmt_rc=$?
+          cargo +1.98.1 clippy --manifest-path tools/q06-memory-context-eval/Cargo.toml --all-targets --locked -- -D warnings >"$OUT/clippy.log" 2>&1
+          clippy_rc=$?
+          cargo +1.98.1 fmt --manifest-path tools/q06-memory-context-eval/Cargo.toml >"$OUT/formatter.log" 2>&1
+          set -e
+          git diff -- tools/q06-memory-context-eval/src/commitment.rs tools/q06-memory-context-eval/src/custody.rs tools/q06-memory-context-eval/tests/custody_dev_preflight.rs >"$OUT/private-format.patch"
+          printf 'focused=%s\nfmt=%s\nclippy=%s\n' "$test_rc" "$fmt_rc" "$clippy_rc" >"$OUT/status.txt"
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          tar -C "$OUT" -cf "${RUNNER_TEMP}/q06-task8-domain-private.tar" .
+          openssl cms -encrypt -binary -aes256 -outform DER -in "${RUNNER_TEMP}/q06-task8-domain-private.tar" -out "${RUNNER_TEMP}/q06-task8-domain-private.cms" "${GITHUB_WORKSPACE}/certs/q06-task8-private-local-receiver-20261015.pem"
+          rm -rf "$OUT" "${RUNNER_TEMP}/q06-task8-domain-private.tar"
+          echo Q06_TASK8_TYPED_PRIVATE_DIAGNOSTICS_CIPHERTEXT_ONLY=PASS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: q06-task8-typed-domain-encrypted-diagnostics
+          path: ${{ runner.temp }}/q06-task8-domain-private.cms
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
