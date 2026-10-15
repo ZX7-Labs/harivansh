@@ -64,9 +64,23 @@ jobs:
               fs::remove_dir(&root).unwrap();
           }
           RUST
-          cargo +1.98.1 generate-lockfile --manifest-path "$D/Cargo.toml" >"${RUNNER_TEMP}/openat2-lock.log" 2>&1
-          cargo +1.98.1 run --manifest-path "$D/Cargo.toml" --locked --quiet >"${RUNNER_TEMP}/openat2-run.log" 2>&1
-          cargo +1.98.1 tree --manifest-path "$D/Cargo.toml" --locked --prefix none >"${RUNNER_TEMP}/openat2-dep-tree.log" 2>&1
+          echo Q06_GENERIC_SOURCE_FREE_DIAGNOSTICS=START
+          if ! cargo +1.98.1 generate-lockfile --manifest-path "$D/Cargo.toml" >"${RUNNER_TEMP}/openat2-lock.log" 2>&1; then
+            echo Q06_OPENAT2_LOCK=FAIL
+            grep -E '^(error|Caused by:)' "${RUNNER_TEMP}/openat2-lock.log" | head -8 || true
+            exit 1
+          fi
+          echo Q06_OPENAT2_LOCK=PASS
+          if ! cargo +1.98.1 run --manifest-path "$D/Cargo.toml" --locked --quiet >"${RUNNER_TEMP}/openat2-run.log" 2>&1; then
+            echo Q06_OPENAT2_RUN=FAIL
+            grep -E '^(error|Caused by:|thread .*panicked)' "${RUNNER_TEMP}/openat2-run.log" | head -8 || true
+            exit 1
+          fi
+          echo Q06_OPENAT2_RUN=PASS
+          if ! cargo +1.98.1 tree --manifest-path "$D/Cargo.toml" --locked --prefix none >"${RUNNER_TEMP}/openat2-dep-tree.log" 2>&1; then
+            echo Q06_OPENAT2_TREE=FAIL
+            exit 1
+          fi
           echo Q06_SOURCE_FREE_RUSTIX_115_OPENAT2=PASS
           echo "Q06_THIRD_PARTY_PACKAGE_COUNT=$(wc -l < "${RUNNER_TEMP}/openat2-dep-tree.log")"
           sha256sum "$D/Cargo.lock" | cut -d' ' -f1 | sed 's/^/Q06_SOURCE_FREE_LOCK_SHA256=/'
