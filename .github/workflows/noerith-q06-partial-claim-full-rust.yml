@@ -43,6 +43,7 @@ jobs:
           check toolchain rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy --no-self-update
           export RUSTUP_TOOLCHAIN=1.98.1
           check focused cargo test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked --test durable_custody_dev local_observation_must
+          check cross-process cargo test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked --test durable_custody_dev fresh_independent_process
           check full-crate cargo test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked
           check strict-clippy cargo clippy --manifest-path tools/q06-memory-context-eval/Cargo.toml --all-targets --locked -- -D warnings
           check fmt cargo fmt --manifest-path tools/q06-memory-context-eval/Cargo.toml -- --check
