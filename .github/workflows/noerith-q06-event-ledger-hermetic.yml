@@ -75,7 +75,7 @@ jobs:
           tar -C "$DIAG" -cf "$TAR" .
           openssl cms -encrypt -binary -aes256 -outform DER \
             -in "$TAR" -out "$CIPHER" \
-            "${GITHUB_WORKSPACE}/certs/q06-recipient-20261015.pem"
+            "${GITHUB_WORKSPACE}/certs/q06-source-owned-event-20261015.pem"
           rm -rf "$DIAG" "$TAR"
 
       - name: Upload ciphertext only (1 day)
