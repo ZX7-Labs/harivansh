@@ -1,0 +1,46 @@
+name: Q06 seed-file atomic-open symlink swap assertion RED
+on:
+  push:
+    branches: [build/noerith-q06-task8-dev-seedfile-20261015]
+    paths: [.github/workflows/noerith-q06-task8-seedfile-race-assertion-red.yml]
+permissions:
+  contents: read
+jobs:
+  exact-private-synthetic-assertion-red:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      TARGET_SHA: a2f259b9b966278aedaac821e97a0e839edee468
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Source-free privacy contract
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Read-only pinned private checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Require real Rust assertion RED, not toolchain or compiler failure
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          LOG="${RUNNER_TEMP}/q06-seedfile-race-assertion-private.log"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --no-self-update >"${RUNNER_TEMP}/q06-toolchain-private.log" 2>&1
+          cd "$ROOT"
+          set +e
+          cargo +1.98.1 test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked --lib symlink_swap_between_metadata_check_and_open_must_be_rejected >"$LOG" 2>&1
+          RESULT=$?
+          set -e
+          test "$RESULT" -ne 0
+          if grep -Eq 'error\[E[0-9]+\]|error: could not compile' "$LOG"; then
+            echo Q06_SEEDFILE_SWAP_ASSERTION_RED=BLOCKED_COMPILE
+            exit 1
+          fi
+          grep -Fq 'test secret_seed_file::race_regression::symlink_swap_between_metadata_check_and_open_must_be_rejected ... FAILED' "$LOG"
+          grep -Fq 'test result: FAILED' "$LOG"
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --exit-code --quiet
+          echo Q06_SEEDFILE_SWAP_ASSERTION_RED=OBSERVED
