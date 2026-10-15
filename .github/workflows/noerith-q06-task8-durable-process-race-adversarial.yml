@@ -1,0 +1,49 @@
+name: Q06 Task8 durable custody cross-process adversarial evidence
+on:
+  push:
+    branches: [build/noerith-q06-task8-dev-seedfile-20261015]
+    paths: [.github/workflows/noerith-q06-task8-durable-process-race-adversarial.yml]
+permissions:
+  contents: read
+jobs:
+  source-private-adversarial:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      TARGET_SHA: 40911d2e46af7e8b8d2c849dcc3d16394e720974
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Source-free privacy contract
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Exact detached private source
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Exact Rust1.98.1 synthetic multi-process exclusive claim tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          LOG="${RUNNER_TEMP}/q06-durable-process-adversarial-private.log"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --no-self-update >"${RUNNER_TEMP}/rust-setup-private.log" 2>&1
+          cd "$ROOT"
+          if ! cargo +1.98.1 test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked --test durable_custody_adversarial_dev >"$LOG" 2>&1; then
+            if grep -Eq 'error\[E[0-9]+\]|error: could not compile|error: failed to' "$LOG"; then
+              echo Q06_DURABLE_ADVERSARIAL=FAIL_COMPILATION
+            elif grep -Eq 'test result: FAILED|test .* FAILED' "$LOG"; then
+              echo Q06_DURABLE_ADVERSARIAL=FAIL_ASSERTION
+            else
+              echo Q06_DURABLE_ADVERSARIAL=FAIL_OTHER
+            fi
+            exit 1
+          fi
+          for name in two_independent_processes_must_not_both_claim_same_identity partial_existing_claim_record_must_not_be_overwritten_or_reclaimed different_evaluation_identities_can_claim_independently; do
+            grep -Fq "test $name ... ok" "$LOG"
+            echo "Q06_DURABLE_ADVERSARIAL_${name}=PASS"
+          done
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --exit-code --quiet
+          echo Q06_DURABLE_CROSS_PROCESS_ADVERSARIAL=PASS
