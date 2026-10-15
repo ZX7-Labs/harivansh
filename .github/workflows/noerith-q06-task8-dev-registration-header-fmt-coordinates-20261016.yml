@@ -1,0 +1,53 @@
+name: Q06 registration header private rustfmt coordinate-only diagnosis
+on:
+  push:
+    branches: [build/noerith-q06-task8-dev-seedfile-20261015]
+    paths: [.github/workflows/noerith-q06-task8-dev-registration-header-fmt-coordinates-20261016.yml]
+permissions:
+  contents: read
+jobs:
+  private-rustfmt-coordinates:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      TARGET_SHA: 7bf965f0c7a7cc6580c02b1b8063159851cd8c01
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Source-free relay contract
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Exact private read-only checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Emit only formatter hunk coordinates, never source or patch text
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          LOG="${RUNNER_TEMP}/q06-private-fmt.log"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --component rustfmt --no-self-update >"${RUNNER_TEMP}/private-rust-install.log" 2>&1
+          cd "$ROOT"
+          cargo +1.98.1 fmt --manifest-path tools/q06-memory-context-eval/Cargo.toml >"$LOG" 2>&1
+          for FILE in tools/q06-memory-context-eval/src/registered_case_header_dev.rs tools/q06-memory-context-eval/src/validator.rs tools/q06-memory-context-eval/tests/registered_case_header_dev.rs; do
+            DIFF="${RUNNER_TEMP}/q06-fmt-$(basename "$FILE")"
+            git diff --unified=0 -- "$FILE" >"$DIFF"
+            python3 - "$DIFF" "$(basename "$FILE")" <<'PY'
+          import re, sys
+          n = 0
+          for line in open(sys.argv[1], encoding="utf-8"):
+              if line.startswith("@@"):
+                  match = re.match(r"^@@ -([0-9]+)(?:,([0-9]+))? \\+([0-9]+)(?:,([0-9]+))? @@", line)
+                  if match is None:
+                      raise SystemExit("Q06_REG_FMT_BAD_HUNK")
+                  n += 1
+                  print("Q06_REG_FMT_HUNK=" + sys.argv[2] + ":" + ":".join(str(int(x or 1)) for x in match.groups()))
+          if n > 80:
+              raise SystemExit("Q06_REG_FMT_TOO_MANY_HUNKS")
+          print("Q06_REG_FMT_COUNT=" + sys.argv[2] + ":" + str(n))
+          PY
+          done
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          echo Q06_REG_FMT_COORDINATES_ONLY=PASS
