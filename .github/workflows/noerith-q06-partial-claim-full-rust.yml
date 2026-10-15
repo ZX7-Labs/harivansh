@@ -1,0 +1,51 @@
+name: Q06 partial-claim integrated full Rust gates
+on:
+  push:
+    branches: [build/noerith-q06-task8-dev-seedfile-20261015]
+    paths: [.github/workflows/noerith-q06-partial-claim-full-rust.yml]
+permissions:
+  contents: read
+jobs:
+  exact-private-rust:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      TARGET_SHA: 7e2c16493e248ee3d8959ca78087c63f4672907c
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Source-free public boundary
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Ephemeral read-only private source
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Source pinned focused and complete Rust gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          LOGDIR="${RUNNER_TEMP}/q06-phrasebank-logs"
+          mkdir -p "$LOGDIR"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          cd "$ROOT"
+          check() {
+            local name="$1"
+            shift
+            if "$@" >"$LOGDIR/$name.log" 2>&1; then
+              echo "Q06_PHRASEBANK_${name}=PASS"
+            else
+              echo "Q06_PHRASEBANK_${name}=FAIL"
+              return 1
+            fi
+          }
+          check toolchain rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy --no-self-update
+          export RUSTUP_TOOLCHAIN=1.98.1
+          check focused cargo test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked --test secret_seed_file_dev --test isolation_dev_preflight --test custody_dev_preflight --test commitment_dev_canonical --test realization_rendered_event_witness --test realization_event_coverage --test realization_dev_correction_turn --test realization_dev_assertion_turn --test realization_dev_recall_surface --test realization_phrasebank
+          check full-crate cargo test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked
+          check clippy cargo clippy --manifest-path tools/q06-memory-context-eval/Cargo.toml --all-targets --locked -- -D warnings
+          check fmt cargo fmt --manifest-path tools/q06-memory-context-eval/Cargo.toml -- --check
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --exit-code --quiet
+          echo Q06_PHRASEBANK_EXACT_ALL_GATES=PASS
