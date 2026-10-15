@@ -1,0 +1,97 @@
+name: NOERITH Q06 validated visible recall isolated pinned hermetic
+
+on:
+  push:
+    branches:
+      - build/noerith-q06-validated-recall-20261015
+    paths:
+      - .github/workflows/noerith-q06-validated-recall-hermetic.yml
+
+permissions:
+  contents: read
+
+jobs:
+  hermetic-private-q06:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      TARGET_SHA: d2b5c55a92501086695dfdc9353172fa22fe8437
+    steps:
+      - name: Checkout source-free public relay
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Privacy-contract preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tests/test-noerith-relay-contract.sh
+
+      - name: Checkout exact read-only private candidate
+        shell: bash
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+
+      - name: Prepare private ephemeral logs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/q06-phrasebank-hermetic-private"
+
+      - name: Execute reviewed pinned isolated verifier
+        id: hermetic
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          LOGS="${RUNNER_TEMP}/q06-phrasebank-hermetic-private"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          cd "$ROOT"
+          if ! rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy --no-self-update >"$LOGS/toolchain.log" 2>&1; then
+            echo Q06_HERMETIC_TOOLCHAIN=BLOCKED
+            exit 1
+          fi
+          export RUSTUP_TOOLCHAIN=1.98.1
+          if ! python3 tools/verify_isolated_pinned_crate_hermetic.py tools/q06-memory-context-eval >"$LOGS/hermetic.log" 2>&1; then
+            echo Q06_HERMETIC_VERIFIER=FAIL
+            exit 1
+          fi
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --exit-code --quiet
+          echo Q06_PHRASEBANK_HERMETIC_ISOLATED=PASS
+
+      - name: Encrypt bounded private diagnostic logs
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          DIAG="${RUNNER_TEMP}/q06-phrasebank-hermetic-private"
+          TAR="${RUNNER_TEMP}/q06-phrasebank-hermetic-private.tar"
+          CIPHER="${RUNNER_TEMP}/q06-phrasebank-hermetic-private.cms"
+          mkdir -p "$DIAG"
+          tar -C "$DIAG" -cf "$TAR" .
+          openssl cms -encrypt -binary -aes256 -outform DER \
+            -in "$TAR" -out "$CIPHER" \
+            certs/q06-task5-ephemeral-format-transfer.pem
+          rm -rf "$DIAG" "$TAR"
+
+      - name: Upload ciphertext only (1 day)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: q06-phrasebank-hermetic-ciphertext
+          path: ${{ runner.temp }}/q06-phrasebank-hermetic-private.cms
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+      - name: Enforce hermetic gate
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ steps.hermetic.outcome }}" = success
+          echo Q06_PHRASEBANK_HERMETIC_FINAL=PASS
