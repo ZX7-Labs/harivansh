@@ -1,4 +1,4 @@
-name: Q06 Task8 dev seed-file-only ingestion strict Rust gates
+name: Q06 Task8 integrated seed and isolation exact Rust gates
 on:
   push:
     branches: [build/noerith-q06-task8-dev-seedfile-20261015]
@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     env:
-      TARGET_SHA: cdf1aefa6ea106ebe174c91811d101c022eab236
+      TARGET_SHA: 1141a1944c8bc798d7537421e3bbe86b42c38d28
     steps:
       - uses: actions/checkout@v4
         with:
@@ -42,7 +42,7 @@ jobs:
           }
           check toolchain rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy --no-self-update
           export RUSTUP_TOOLCHAIN=1.98.1
-          check focused cargo test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked --test secret_seed_file_dev --test custody_dev_preflight --test commitment_dev_canonical --test realization_rendered_event_witness --test realization_event_coverage --test realization_dev_correction_turn --test realization_dev_assertion_turn --test realization_dev_recall_surface --test realization_phrasebank
+          check focused cargo test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked --test secret_seed_file_dev --test isolation_dev_preflight --test custody_dev_preflight --test commitment_dev_canonical --test realization_rendered_event_witness --test realization_event_coverage --test realization_dev_correction_turn --test realization_dev_assertion_turn --test realization_dev_recall_surface --test realization_phrasebank
           check full-crate cargo test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked
           check clippy cargo clippy --manifest-path tools/q06-memory-context-eval/Cargo.toml --all-targets --locked -- -D warnings
           check fmt cargo fmt --manifest-path tools/q06-memory-context-eval/Cargo.toml -- --check
