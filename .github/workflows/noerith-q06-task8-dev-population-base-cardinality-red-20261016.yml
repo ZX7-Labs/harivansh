@@ -1,0 +1,44 @@
+name: Q06 DEV impossible base cardinality genuine assertion RED
+on:
+  push:
+    branches: [build/noerith-q06-task8-dev-seedfile-20261015]
+    paths: [.github/workflows/noerith-q06-task8-dev-population-base-cardinality-red-20261016.yml]
+permissions:
+  contents: read
+jobs:
+  actual-private-red:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      TARGET_SHA: 2441edf8cd0e870ec11d135c84a3c23800e7ebaf
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: bash tests/test-noerith-relay-contract.sh
+      - name: Exact private read-only ephemeral checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Reject impossible base count by named Rust assertion
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          LOG="${RUNNER_TEMP}/q06-private-base-cardinality-red.log"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --no-self-update >"${RUNNER_TEMP}/q06-private-rust-install.log" 2>&1
+          cd "$ROOT"
+          set +e
+          cargo +1.98.1 test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked --lib impossible_base_population_cardinality_must_reject_without_hashing >"$LOG" 2>&1
+          EXIT=$?
+          set -e
+          test "$EXIT" -ne 0
+          if grep -Eq '^error\\[E[0-9]+\\]|^error: could not compile|^error: failed to' "$LOG"; then
+            echo Q06_DEV_BASE_CARDINALITY_ASSERTION_RED=INVALID_COMPILER_FAILURE
+            exit 1
+          fi
+          grep -Fq 'test population_commitment_dev::tests::impossible_base_population_cardinality_must_reject_without_hashing ... FAILED' "$LOG"
+          grep -Fq 'test result: FAILED' "$LOG"
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          echo Q06_DEV_BASE_CARDINALITY_ASSERTION_RED=OBSERVED
