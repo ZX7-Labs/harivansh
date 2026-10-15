@@ -1,0 +1,35 @@
+name: Q06 DEV case registration header ten exact private assertion mutants
+on:
+  push:
+    branches: [build/noerith-q06-task8-dev-seedfile-20261015]
+    paths: [.github/workflows/noerith-q06-task8-dev-registration-header-mutants-20261016.yml]
+permissions:
+  contents: read
+jobs:
+  exact-private-assertion-mutants:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      TARGET_SHA: 2ec28236d114e1567b761da3cbd5c47b0cc06769
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify source-free relay
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Read-only exact private ephemeral checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Ten source-owned Rust assertion mutation kills
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --no-self-update >"${RUNNER_TEMP}/rust-private-install.log" 2>&1
+          cd "$ROOT"
+          python3 tools/verify_q06_task8_dev_registration_header_mutants.py
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --exit-code --quiet
+          echo Q06_REG_HEADER_TEN_MUTANTS_EXACT_SHA=PASS
