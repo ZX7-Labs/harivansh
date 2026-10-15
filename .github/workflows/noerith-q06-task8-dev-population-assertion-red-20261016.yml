@@ -1,0 +1,46 @@
+name: Q06 DEV validated population genuine Rust assertion RED
+on:
+  push:
+    branches: [build/noerith-q06-task8-dev-seedfile-20261015]
+    paths: [.github/workflows/noerith-q06-task8-dev-population-assertion-red-20261016.yml]
+permissions:
+  contents: read
+jobs:
+  red-exact-private-assertion:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 36
+    env:
+      TARGET_SHA: 08c69945606b7991e6e146fcc8d8dcdb73e2617b
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Public relay is source-free
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Ephemeral read-only exact private revision
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Reject inert implementation by actual compiled Rust assertion
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          LOG="${RUNNER_TEMP}/q06-population-red-private.log"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --no-self-update >"${RUNNER_TEMP}/rust-private-install.log" 2>&1
+          cd "$ROOT"
+          set +e
+          cargo +1.98.1 test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked --test population_commitment_dev population_order_and_exact_membership_rebind_without_caller_controlled_labels >"$LOG" 2>&1
+          EXIT=$?
+          set -e
+          test "$EXIT" -ne 0
+          if grep -Eq '^error\\[E[0-9]+\\]|^error: could not compile|^error: failed to' "$LOG"; then
+            echo Q06_DEV_POPULATION_ASSERTION_RED=INVALID_COMPILER_FAILURE
+            exit 1
+          fi
+          grep -Fq 'test population_order_and_exact_membership_rebind_without_caller_controlled_labels ... FAILED' "$LOG"
+          grep -Fq 'test result: FAILED' "$LOG"
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --exit-code --quiet
+          echo Q06_DEV_POPULATION_ASSERTION_RED=OBSERVED
