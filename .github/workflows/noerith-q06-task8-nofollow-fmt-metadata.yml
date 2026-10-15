@@ -38,6 +38,8 @@ jobs:
               "tools/q06-memory-context-eval/tests/secret_seed_file_dev.rs": "TEST",
               "tools/q06-memory-context-eval/src/secret_seed_root_directory.rs": "DIRFD_SRC",
               "tools/q06-memory-context-eval/tests/seed_root_dir_dev.rs": "DIRFD_TEST",
+              "tools/q06-memory-context-eval/src/durable_custody_dev.rs": "DURABLE_SRC",
+              "tools/q06-memory-context-eval/tests/durable_custody_dev.rs": "DURABLE_TEST",
               "tools/q06-memory-context-eval/src/durable_custody_dev.rs": "CUSTODY_SRC",
               "tools/q06-memory-context-eval/tests/durable_custody_dev.rs": "CUSTODY_TEST",
           }
