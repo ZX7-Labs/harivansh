@@ -1,0 +1,45 @@
+name: Q06 complete registered case DEV exact private assertion RED
+on:
+  push:
+    branches: [build/noerith-q06-task8-dev-seedfile-20261015]
+    paths: [.github/workflows/noerith-q06-task8-dev-full-case-assertion-red-20261016.yml]
+permissions:
+  contents: read
+jobs:
+  source-free-exact-red:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      TARGET_SHA: 322e14f28548e0c0df6c9368ae50daa0957c3378
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: bash tests/test-noerith-relay-contract.sh
+      - name: Exact private read-only source
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Genuine failing semantic assertion proof only
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          LOG="${RUNNER_TEMP}/q06-complete-case-private-red.log"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --no-self-update >"${RUNNER_TEMP}/rust-install-private.log" 2>&1
+          cd "$ROOT"
+          set +e
+          cargo +1.98.1 test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked --test full_case_commitment_dev exact_validated_case_rebinds_semantic_source_and_registration_identity >"$LOG" 2>&1
+          EXIT=$?
+          set -e
+          test "$EXIT" -ne 0
+          if grep -Eq '^error\\[E[0-9]+\\]|^error: could not compile|^error: failed to' "$LOG"; then
+            echo Q06_DEV_FULL_CASE_ASSERTION_RED=INVALID_COMPILER_FAILURE
+            exit 1
+          fi
+          grep -Fq 'test exact_validated_case_rebinds_semantic_source_and_registration_identity ... FAILED' "$LOG"
+          grep -Fq 'test result: FAILED' "$LOG"
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --exit-code --quiet
+          echo Q06_DEV_FULL_CASE_ASSERTION_RED=OBSERVED
