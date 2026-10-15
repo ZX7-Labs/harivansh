@@ -1,0 +1,42 @@
+name: Q06 exact bounded streamed full case eight source assertion mutants
+on:
+  push:
+    branches: [build/noerith-q06-task8-dev-seedfile-20261015]
+    paths: [.github/workflows/noerith-q06-dev-full-case-streaming-mutants-20261016.yml]
+permissions:
+  contents: read
+jobs:
+  exact-private-streamed-source-mutants:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 42
+    env:
+      TARGET_SHA: 79ef6dba41c8656b98d29432e39b5147f9d69bf3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: bash tests/test-noerith-relay-contract.sh
+      - name: Exact ephemeral private read-only checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Eight actual Rust source SHA256 streaming assertion mutation kills
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          LOG="${RUNNER_TEMP}/private-q06-stream-mutants.log"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --no-self-update >"${RUNNER_TEMP}/private-rust-toolchain.log" 2>&1
+          cd "$ROOT"
+          if ! python3 tools/verify_q06_dev_fullcase_root_streaming_mutants.py >"$LOG" 2>&1; then
+            grep -E '^Q06_STREAM_MUTANT_QUALIFICATION=FAIL Q06_STREAM_MUTANT_[a-z0-9-]+=(SURVIVED|COMPILER_FAILURE_NOT_KILL|WRONG_ASSERTION|SOURCE_MISMATCH)$' "$LOG" || true
+            echo Q06_STREAM_EIGHT_MUTANTS_EXACT=FAIL
+            exit 1
+          fi
+          grep -Fxq 'Q06_STREAM_MUTANT_QUALIFICATION=PASS count=8' "$LOG"
+          test "$(grep -Ec '^Q06_STREAM_MUTANT_[a-z0-9-]+=KILLED_BY_ASSERTION$' "$LOG")" -eq 8
+          grep -E '^Q06_STREAM_MUTANT_[a-z0-9-]+=KILLED_BY_ASSERTION$' "$LOG"
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --exit-code --quiet
+          echo Q06_STREAM_EIGHT_MUTANTS_EXACT=PASS
