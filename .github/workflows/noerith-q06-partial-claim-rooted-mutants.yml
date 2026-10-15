@@ -1,0 +1,43 @@
+name: Q06 partial-claim six rooted source mutants
+on:
+  push:
+    branches: [build/noerith-q06-task8-dev-seedfile-20261015]
+    paths: [.github/workflows/noerith-q06-partial-claim-rooted-mutants.yml]
+permissions:
+  contents: read
+jobs:
+  private-rooted-synthetic-mutants:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      TARGET_SHA: 7e2c16493e248ee3d8959ca78087c63f4672907c
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Source-free privacy control
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Exact private read-only checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Require six source-owned Rust assertion kills
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          LOG="${RUNNER_TEMP}/q06-rooted-six-mutant-private.log"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --no-self-update >"${RUNNER_TEMP}/q06-private-rust-install.log" 2>&1
+          cd "$ROOT"
+          if ! python3 -B tools/verify_q06_task8_dev_rooted_seed_mutants.py >"$LOG" 2>&1; then
+            grep -E '^Q06_ROOTED_MUTANT_QUALIFICATION=FAIL (Q06_ROOTED_MUTANT_[a-z-]+=(SOURCE_MISMATCH|SURVIVED|WRONG_ASSERTION|COMPILER_FAILURE_NOT_KILL)|[A-Za-z]+Error)$' "$LOG" || true
+            echo Q06_ROOTED_DIRFD_MUTANTS=FAIL
+            exit 1
+          fi
+          grep -Fxq 'Q06_ROOTED_MUTANT_QUALIFICATION=PASS count=6' "$LOG"
+          test "$(grep -Ec '^Q06_ROOTED_MUTANT_[a-z-]+=KILLED_BY_ASSERTION$' "$LOG")" -eq 6
+          grep -E '^Q06_ROOTED_MUTANT_[a-z-]+=KILLED_BY_ASSERTION$' "$LOG"
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --exit-code --quiet
+          echo Q06_ROOTED_DIRFD_MUTANTS=PASS
