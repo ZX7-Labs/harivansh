@@ -55,5 +55,54 @@ jobs:
                   count += 1
           print("Q06_FMT_TOTAL_HUNKS=" + str(count))
           PY
+          # Transport only whitespace gaps and hashes. No private code bytes.
+          python3 - <<'PY'
+          import base64
+          import hashlib
+          import json
+          import subprocess
+          from pathlib import Path
+
+          paths = [
+              "tools/q06-memory-context-eval/src/secret_seed_root_directory.rs",
+              "tools/q06-memory-context-eval/tests/seed_root_dir_dev.rs",
+          ]
+          def split_whitespace(data):
+              letters, gaps, current = bytearray(), [], bytearray()
+              for byte in data:
+                  if byte in b" \t\r\n\v\f":
+                      current.append(byte)
+                  else:
+                      gaps.append(bytes(current))
+                      current.clear()
+                      letters.append(byte)
+              gaps.append(bytes(current))
+              return bytes(letters), gaps
+
+          for path in paths:
+              before = subprocess.check_output(["git", "show", "HEAD:" + path])
+              after = Path(path).read_bytes()
+              chars_before, gaps_before = split_whitespace(before)
+              chars_after, gaps_after = split_whitespace(after)
+              if chars_before != chars_after:
+                  raise SystemExit("Q06_FMT_WHITESPACE_ONLY=FAIL_NON_WHITESPACE_DRIFT")
+              edits = [
+                  [idx, base64.b64encode(updated).decode("ascii")]
+                  for idx, (original, updated) in enumerate(zip(gaps_before, gaps_after))
+                  if original != updated
+              ]
+              if len(edits) > 120 or sum(len(value) for _, value in edits) > 8192:
+                  raise SystemExit("Q06_FMT_WHITESPACE_ONLY=FAIL_BOUNDS")
+              label = "DIRFD_SRC" if "/src/" in path else "DIRFD_TEST"
+              packet = {
+                  "label": label,
+                  "before_sha256": hashlib.sha256(before).hexdigest(),
+                  "after_sha256": hashlib.sha256(after).hexdigest(),
+                  "chars_sha256": hashlib.sha256(chars_before).hexdigest(),
+                  "edits": edits,
+              }
+              print("Q06_FMT_WHITESPACE_RECIPE=" + json.dumps(packet, separators=(",", ":")))
+          print("Q06_FMT_WHITESPACE_ONLY=PASS")
+          PY
           test "$(git rev-parse HEAD)" = "$TARGET_SHA"
           echo Q06_FMT_SOURCE_FREE_PROBE=PASS
