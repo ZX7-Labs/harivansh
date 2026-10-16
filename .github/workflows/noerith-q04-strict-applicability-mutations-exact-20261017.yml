@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
-      TARGET_SHA: cb3c798017b92631ce60aecc6e88bb57449b8604
+      TARGET_SHA: 78b9bffe6f2aacdc4989e2b972b8843e2df2ae6f
       PYTHONDONTWRITEBYTECODE: "1"
     steps:
       - uses: actions/checkout@v4
@@ -50,6 +50,22 @@ jobs:
             echo Q04_MUTATION_eight-named=PASS
           else
             echo Q04_MUTATION_eight-named=FAIL
+            exit 1
+          fi
+          check grammar-inventory python3 -m unittest discover -s tools -p test_verify_q04_empty_policy_inventory_mutations.py -q
+          if python3 tools/verify_q04_empty_policy_inventory_mutations.py >"$LOGDIR/inventory-mutants.log" 2>&1; then
+            test "$(grep -Ec '^Q04_INVENTORY_MUTANT_[a-z0-9-]+=KILLED_BY_ASSERTION
+          check workspace cargo test --locked --workspace
+          check clippy cargo clippy --locked --workspace --all-targets -- -D warnings
+          check rustfmt cargo fmt --all -- --check
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --quiet --exit-code
+          echo Q04_MUTATION_TWO_GAPS_EXACT_ALL_GATES=PASS
+ "$LOGDIR/inventory-mutants.log")" -eq 6
+            grep -Fxq 'Q04_INVENTORY_ASSERTION_MUTANTS=PASS count=6' "$LOGDIR/inventory-mutants.log"
+            echo Q04_MUTATION_six-inventory=PASS
+          else
+            echo Q04_MUTATION_six-inventory=FAIL
             exit 1
           fi
           check policy cargo test --locked -p noerith-policy
