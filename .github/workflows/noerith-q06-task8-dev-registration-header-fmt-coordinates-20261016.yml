@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
-      TARGET_SHA: 143a8755bf8eeb35686e1027c0fc1ed4b31c81a2
+      TARGET_SHA: f5860b7caf3af31b5584e3ece6ceeb0ed87a51f2
     steps:
       - uses: actions/checkout@v4
         with:
@@ -31,7 +31,7 @@ jobs:
           rustup toolchain install 1.98.1 --profile minimal --component rustfmt --no-self-update >"${RUNNER_TEMP}/private-rust-install.log" 2>&1
           cd "$ROOT"
           cargo +1.98.1 fmt --manifest-path tools/q06-memory-context-eval/Cargo.toml >"$LOG" 2>&1
-          for FILE in tools/q06-memory-context-eval/src/review_intake_dev.rs tools/q06-memory-context-eval/tests/review_intake_dev.rs; do
+          for FILE in tools/q06-memory-context-eval/src/review_intake_dev.rs tools/q06-memory-context-eval/src/review_request_preflight_dev.rs tools/q06-memory-context-eval/tests/review_request_preflight_dev.rs; do
             DIFF="${RUNNER_TEMP}/q06-fmt-$(basename "$FILE")"
             git diff --unified=0 -- "$FILE" >"$DIFF"
             python3 - "$DIFF" "$(basename "$FILE")" <<'PY'
