@@ -1,0 +1,49 @@
+name: NOERITH kernel private Rustfmt non-source diagnostics
+on:
+  push:
+    branches: [build/noerith-kernel-callback-verify-20261016]
+    paths: [.github/workflows/noerith-kernel-callback-format-coordinates-20261016.yml]
+permissions:
+  contents: read
+jobs:
+  rustfmt-locator:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      TARGET_SHA: 5f2005e0e811c731ed8bf547b355c36b612cc548
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Source-free relay contract
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Read-only exact SHA ephemeral private source
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Print Rustfmt hunk coordinates only
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          LOG="$RUNNER_TEMP/private-rustfmt.log"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          cd "$ROOT"
+          rustup toolchain install 1.98.1 --profile minimal --component rustfmt --no-self-update >"$RUNNER_TEMP/rustup.log" 2>&1
+          export RUSTUP_TOOLCHAIN=1.98.1
+          if cargo fmt --all -- --check >"$LOG" 2>&1; then
+            echo KERNEL_RUSTFMT_EXACT=PASS
+          else
+            echo KERNEL_RUSTFMT_EXACT=FAIL
+            python3 - "$LOG" <<'PY'
+          import re,sys,pathlib
+          log=pathlib.Path(sys.argv[1]).read_text(errors='replace')
+          m=re.findall(r'^Diff in [^\n]+?/(crates/noerith-[a-z-]+)/([^ :\n]+):([0-9]+):?',log,re.M)
+          # No source lines, file contents, or raw diffs leave ephemeral runner.
+          print('KERNEL_RUSTFMT_HUNK_COUNT='+str(len(m)))
+          for package,name,line in m[:80]:
+              print('KERNEL_RUSTFMT_HUNK='+package+'/'+name+':'+line)
+          PY
+          fi
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --quiet --exit-code
