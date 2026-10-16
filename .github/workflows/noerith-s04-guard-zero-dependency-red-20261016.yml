@@ -1,0 +1,43 @@
+name: NOERITH S04 fidelity untracked source assertion RED
+on:
+  push:
+    branches: [build/noerith-kernel-callback-verify-20261016]
+    paths: [.github/workflows/noerith-s04-guard-zero-dependency-red-20261016.yml]
+permissions:
+  contents: read
+jobs:
+  exact-private:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      TARGET_SHA: 08521ac51620c8b83af95ffabe33b44be7263d2f
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Source-free relay
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Exact private checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Rust1.98 exact semantic assertion RED
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          LOG="$RUNNER_TEMP/s04-dependency-red.log"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --no-self-update >"$RUNNER_TEMP/rustup.log" 2>&1
+          export RUSTUP_TOOLCHAIN=1.98.1
+          cd "$ROOT"
+          if cargo test --locked -p noerith-cognition --test fidelity sufficient_fidelity_report_cannot_certify_selected_source_with_zero_dependencies >"$LOG" 2>&1; then
+            echo S04_FIDELITY_EMPTY_SELECTED_DEPENDENCY_RED=UNEXPECTED_PASS
+            exit 1
+          fi
+          grep -Eq 'test sufficient_fidelity_report_cannot_certify_selected_source_with_zero_dependencies.*FAILED' "$LOG"
+          grep -Fq 'independent guard cannot call an untracked selected exact source sufficient' "$LOG"
+          grep -Fq 'test result: FAILED.' "$LOG"
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --quiet --exit-code
+          echo S04_FIDELITY_EMPTY_SELECTED_DEPENDENCY_ASSERTION_RED=OBSERVED
