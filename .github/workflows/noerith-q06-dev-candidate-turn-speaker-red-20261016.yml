@@ -1,0 +1,45 @@
+name: Q06 source-reviewed fragment cannot forge speaker actual Rust assertion RED
+on:
+  push:
+    branches: [build/noerith-q06-task8-dev-seedfile-20261015]
+    paths: [.github/workflows/noerith-q06-dev-candidate-turn-speaker-red-20261016.yml]
+permissions:
+  contents: read
+jobs:
+  exact-private-red:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 38
+    env:
+      TARGET_SHA: 371b20de910f9aef8a2ca40519a5dcb5fe4c9e15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: bash tests/test-noerith-relay-contract.sh
+      - name: Source-free relay exact private read-only checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Require named true Rust assertion RED not compiler failure
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          LOG="${RUNNER_TEMP}/q06-candidate-turn-speaker-red.log"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --no-self-update >"${RUNNER_TEMP}/private-rust-install.log" 2>&1
+          cd "$ROOT"
+          set +e
+          cargo +1.98.1 test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked --test candidate_turn_gate_dev approved_hindi_fact_fragment_still_cannot_authorize_invented_speaker >"$LOG" 2>&1
+          EXIT=$?
+          set -e
+          test "$EXIT" -ne 0
+          if grep -Eq '^error\\[E[0-9]+\\]|^error: could not compile|^error: failed to' "$LOG"; then
+            echo Q06_TURN_SPEAKER_RED=INVALID_COMPILER_FAILURE
+            exit 1
+          fi
+          grep -Fq 'test approved_hindi_fact_fragment_still_cannot_authorize_invented_speaker ... FAILED' "$LOG"
+          grep -Fq 'test result: FAILED' "$LOG"
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --exit-code --quiet
+          echo Q06_TURN_SPEAKER_RED=OBSERVED
