@@ -1,0 +1,69 @@
+name: NOERITH kernel exact private mutation and integration
+on:
+  push:
+    branches: [build/noerith-kernel-callback-verify-20261016]
+    paths: [.github/workflows/noerith-kernel-callback-mutants-exact-20261016.yml]
+permissions:
+  contents: read
+jobs:
+  exact-source-mutation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      TARGET_SHA: a7b88ac9419c99d9e37bb4bd24006baef5a86a36
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Source-free relay contract
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Read-only exact SHA private checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Exact Rust and assertion-sensitive mutation gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          LOGDIR="$RUNNER_TEMP/kernel-callback-mutants"
+          mkdir -p "$LOGDIR"
+          chmod 700 "$LOGDIR"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          check() {
+            local label="$1"
+            shift
+            if "$@" >"$LOGDIR/$label.log" 2>&1; then
+              echo "KERNEL_CALLBACK_MUTATION_$label=PASS"
+            else
+              echo "KERNEL_CALLBACK_MUTATION_$label=FAIL"
+              exit 1
+            fi
+          }
+          check toolchain rustup toolchain install 1.98.1 --profile minimal --component clippy --component rustfmt --no-self-update
+          export RUSTUP_TOOLCHAIN=1.98.1
+          cd "$ROOT"
+          check syntax python3 -c "import ast,pathlib;[ast.parse(pathlib.Path(p).read_text()) for p in ['tools/verify_kernel_callback_mutations.py','tools/test_verify_kernel_callback_mutations.py']]"
+          check harness-tests python3 -m unittest discover -s tools -p test_verify_kernel_callback_mutations.py -q
+          if python3 tools/verify_kernel_callback_mutations.py >"$LOGDIR/mutants.log" 2>&1; then
+            test "$(grep -Ec '^KERNEL_CALLBACK_MUTANT_[a-z0-9-]+=KILLED_BY_ASSERTION$' "$LOGDIR/mutants.log")" -eq 11
+            grep -Fxq 'KERNEL_CALLBACK_ASSERTION_MUTANTS=PASS count=11' "$LOGDIR/mutants.log"
+            echo KERNEL_CALLBACK_MUTATION_rust-mutants=PASS
+          else
+            python3 - "$LOGDIR/mutants.log" <<'PY'
+          import pathlib,re,sys
+          s=pathlib.Path(sys.argv[1]).read_text(errors='replace')
+          m=re.findall(r'(NOT_KILLED_BY_EXPECTED_ASSERTION|MUTATION_NOT_SINGLE_EXACT_MATCH|MISSING_REQUIRED_NAMED_RUST_ASSERTION):([a-z0-9-]+)',s)
+          print('KERNEL_CALLBACK_MUTATION_SAFE_DIAG='+(m[-1][0]+':'+m[-1][1] if m else 'UNCLASSIFIED:UNKNOWN'))
+          PY
+            echo KERNEL_CALLBACK_MUTATION_rust-mutants=FAIL
+            exit 1
+          fi
+          check kernel-full cargo test --locked -p noerith-kernel
+          check workspace-full cargo test --locked --workspace
+          check strict-clippy cargo clippy --locked --workspace --all-targets -- -D warnings
+          check rustfmt cargo fmt --all -- --check
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --quiet --exit-code
+          echo KERNEL_CALLBACK_EXACT_SHA_ASSERTION_MUTATIONS_FULL_GATES=PASS
