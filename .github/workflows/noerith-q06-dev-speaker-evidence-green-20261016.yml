@@ -1,0 +1,52 @@
+name: Q06 exact private 69-family speaker evidence fail-closed full Rust gates
+on:
+  push:
+    branches: [build/noerith-q06-task8-dev-seedfile-20261015]
+    paths: [.github/workflows/noerith-q06-dev-speaker-evidence-green-20261016.yml]
+permissions:
+  contents: read
+jobs:
+  exact-source-speaker-evidence:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      TARGET_SHA: 9c43b7c031de34845ee2ef05dced5a8f1f77a190
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Public source-free relay contract
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Pinned private ephemeral read-only checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Source-owned speaker refusal, full crate, strict Clippy and Rustfmt
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          LOGDIR="${RUNNER_TEMP}/q06-private-speaker-logs"
+          mkdir -p "$LOGDIR"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          cd "$ROOT"
+          check() {
+            local name="$1"
+            shift
+            if "$@" >"$LOGDIR/$name.log" 2>&1; then
+              echo "Q06_SPEAKER_${name}=PASS"
+            else
+              echo "Q06_SPEAKER_${name}=FAIL"
+              return 1
+            fi
+          }
+          check toolchain rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy --no-self-update
+          export RUSTUP_TOOLCHAIN=1.98.1
+          check focused cargo test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked --test turn_attribution_dev
+          check all-69 cargo test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked --test turn_attribution_dev all_69_source_families_are_not_implicitly_approved_user_turns
+          check full-crate cargo test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked
+          check strict-clippy cargo clippy --manifest-path tools/q06-memory-context-eval/Cargo.toml --all-targets --locked -- -D warnings
+          check fmt cargo fmt --manifest-path tools/q06-memory-context-eval/Cargo.toml -- --check
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --exit-code --quiet
+          echo Q06_SPEAKER_EXACT_ALL_GATES=PASS
