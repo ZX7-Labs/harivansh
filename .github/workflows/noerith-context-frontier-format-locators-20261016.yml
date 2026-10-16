@@ -1,0 +1,47 @@
+name: NOERITH context selected dependency exact fmt shape diagnosis
+on:
+  push:
+    branches: [build/noerith-context-frontier-verify-20261016]
+    paths: [.github/workflows/noerith-context-frontier-format-locators-20261016.yml]
+permissions:
+  contents: read
+jobs:
+  exact-private-fmt-locators:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      TARGET_SHA: c38367113ad45709137681afb14438ebcfde0b3b
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Source-free relay
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Ephemeral exact read-only private source
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Rust 1.98.1 fmt bounded hunk coordinates
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          LOG="$RUNNER_TEMP/fmt-private.log"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --component rustfmt --no-self-update >"$RUNNER_TEMP/toolchain.log" 2>&1
+          cd "$ROOT"
+          if RUSTUP_TOOLCHAIN=1.98.1 cargo fmt --all -- --check >"$LOG" 2>&1; then
+            echo CONTEXT_DEP_RUSTFMT=PASS
+          else
+            echo CONTEXT_DEP_RUSTFMT=FAIL
+            python3 - "$LOG" <<'PY'
+          import re,sys,pathlib
+          s=pathlib.Path(sys.argv[1]).read_text(errors='replace')
+          entries=re.findall(r'^Diff in [^\n]+?/(crates/noerith-[a-z-]+)/([^ :\n]+):([0-9]+):?',s,re.M)
+          print("CONTEXT_DEP_FMT_HUNKS="+str(len(entries)))
+          for package,name,row in entries[:60]:
+              print("CONTEXT_DEP_FMT_HUNK="+package+"/"+name+":"+row)
+          PY
+          fi
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --quiet --exit-code
