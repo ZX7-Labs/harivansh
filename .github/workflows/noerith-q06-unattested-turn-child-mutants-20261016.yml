@@ -1,0 +1,42 @@
+name: Q06 source-bound fresh child private three assertion mutants
+on:
+  push:
+    branches: [build/noerith-q06-task8-dev-seedfile-20261015]
+    paths: [.github/workflows/noerith-q06-unattested-turn-child-mutants-20261016.yml]
+permissions:
+  contents: read
+jobs:
+  exact-private-child-mutants:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      TARGET_SHA: 56a702e7ba780f81cbbb5a8508a1ac1013498eb4
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: bash tests/test-noerith-relay-contract.sh
+      - name: Ephemeral pinned private read-only checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Three named genuine Rust replay assertion mutants, no raw logs
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          LOG="${RUNNER_TEMP}/q06-unattested-child-private-mutants.log"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --no-self-update >"${RUNNER_TEMP}/rust-private-install.log" 2>&1
+          cd "$ROOT"
+          if ! python3 tools/verify_q06_dev_turn_challenge_child_mutants.py >"$LOG" 2>&1; then
+            grep -E '^Q06_TURN_CHILD_MUTANT_QUALIFICATION=FAIL Q06_TURN_CHILD_MUTANT_[a-z0-9-]+=(SOURCE_MISMATCH|SURVIVED|WRONG_ASSERTION|COMPILER_FAILURE_NOT_KILL)$' "$LOG" || true
+            echo Q06_TURN_CHILD_THREE_MUTANTS_EXACT=FAIL
+            exit 1
+          fi
+          grep -Fxq 'Q06_TURN_CHILD_MUTANT_QUALIFICATION=PASS count=3' "$LOG"
+          test "$(grep -Ec '^Q06_TURN_CHILD_MUTANT_[a-z0-9-]+=KILLED_BY_ASSERTION$' "$LOG")" -eq 3
+          grep -E '^Q06_TURN_CHILD_MUTANT_[a-z0-9-]+=KILLED_BY_ASSERTION$' "$LOG"
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --exit-code --quiet
+          echo Q06_TURN_CHILD_THREE_MUTANTS_EXACT=PASS
