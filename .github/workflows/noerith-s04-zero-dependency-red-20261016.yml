@@ -1,0 +1,43 @@
+name: NOERITH S04 selected source zero-dependency RED
+on:
+  push:
+    branches: [build/noerith-kernel-callback-verify-20261016]
+    paths: [.github/workflows/noerith-s04-zero-dependency-red-20261016.yml]
+permissions:
+  contents: read
+jobs:
+  exact-private:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      TARGET_SHA: 5646b37319afd8846f5e8dbb1c5597521b79383d
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Source-free relay
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Exact private checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Rust1.98 exact semantic assertion RED
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          LOG="$RUNNER_TEMP/s04-dependency-red.log"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --no-self-update >"$RUNNER_TEMP/rustup.log" 2>&1
+          export RUSTUP_TOOLCHAIN=1.98.1
+          cd "$ROOT"
+          if cargo test --locked -p noerith-cognition --test context_compiler selected_exact_source_with_no_declared_freshness_dependency_cannot_be_qualified >"$LOG" 2>&1; then
+            echo S04_EMPTY_SELECTED_DEPENDENCY_RED=UNEXPECTED_PASS
+            exit 1
+          fi
+          grep -Eq 'test selected_exact_source_with_no_declared_freshness_dependency_cannot_be_qualified.*FAILED' "$LOG"
+          grep -Fq 'selected source with zero lifecycle dependencies' "$LOG"
+          grep -Fq 'test result: FAILED.' "$LOG"
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --quiet --exit-code
+          echo S04_EMPTY_SELECTED_DEPENDENCY_ASSERTION_RED=OBSERVED
