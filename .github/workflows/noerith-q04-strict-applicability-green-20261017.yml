@@ -1,0 +1,52 @@
+name: NOERITH Q04 strict policy expected-applicability full Rust exact checks
+on:
+  push:
+    branches: [build/noerith-q04-strict-applicability-verify-20261017]
+    paths: [.github/workflows/noerith-q04-strict-applicability-green-20261017.yml]
+permissions:
+  contents: read
+jobs:
+  source-free-q04-green:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      TARGET_SHA: 40a28fc543c5e8fff50f33f0ba1e04704088162f
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Source-free public relay contract
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Exact ephemeral private revision checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Full immutable Rust verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          LOGDIR="$RUNNER_TEMP/q04-private-logs"
+          mkdir -m 700 -p "$LOGDIR"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          check() {
+            local label="$1"
+            shift
+            if "$@" >"$LOGDIR/$label.log" 2>&1; then
+              echo "Q04_STRICT_$label=PASS"
+            else
+              echo "Q04_STRICT_$label=FAIL"
+              exit 1
+            fi
+          }
+          check toolchain rustup toolchain install 1.98.1 --profile minimal --component clippy --component rustfmt --no-self-update
+          export RUSTUP_TOOLCHAIN=1.98.1
+          cd "$ROOT"
+          check named-regressions cargo test --locked -p noerith-policy --test q04_policy q04_strict_expected_nonapplicable_requires_verified_current_evidence
+          check policy-crate cargo test --locked -p noerith-policy
+          check full-workspace cargo test --locked --workspace
+          check strict-clippy cargo clippy --locked --workspace --all-targets -- -D warnings
+          check rustfmt cargo fmt --all -- --check
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --quiet --exit-code
+          echo Q04_STRICT_EXPECTED_APPLICABILITY_EXACT_ALL_GATES=PASS
