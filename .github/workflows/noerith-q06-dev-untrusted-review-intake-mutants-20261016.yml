@@ -1,4 +1,4 @@
-name: Q06 untrusted review proposal ten real Rust security assertion mutants
+name: Q06 untrusted review proposal thirteen real Rust security assertion mutants
 on:
   push:
     branches: [build/noerith-q06-task8-dev-seedfile-20261015]
@@ -6,11 +6,11 @@ on:
 permissions:
   contents: read
 jobs:
-  exact-private-ten-review-mutants:
+  exact-private-thirteen-review-mutants:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
-      TARGET_SHA: b923d3df996d3007a6ec61d6485411a51725ba73
+      TARGET_SHA: aa32c6fec4285330ae91872de73c4b3f1c751003
     steps:
       - uses: actions/checkout@v4
         with:
@@ -20,7 +20,7 @@ jobs:
         env:
           PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
         run: bash scripts/checkout-noerith-private.sh
-      - name: Exact ten bounded proposal-source Rust assertion kills
+      - name: Exact thirteen bounded proposal-source Rust assertion kills
         shell: bash
         run: |
           set -euo pipefail
@@ -31,12 +31,12 @@ jobs:
           cd "$ROOT"
           if ! python3 tools/verify_q06_dev_untrusted_review_intake_mutants.py >"$LOG" 2>&1; then
             grep -E '^Q06_REVIEW_INTAKE_MUTANT_QUALIFICATION=FAIL Q06_REVIEW_INTAKE_MUTANT_[a-z0-9-]+=(SOURCE_MISMATCH|SURVIVED|WRONG_ASSERTION|COMPILER_FAILURE_NOT_KILL)$' "$LOG" || true
-            echo Q06_UNTRUSTED_REVIEW_TEN_MUTANTS_EXACT=FAIL
+            echo Q06_UNTRUSTED_REVIEW_THIRTEEN_MUTANTS_EXACT=FAIL
             exit 1
           fi
-          grep -Fxq 'Q06_REVIEW_INTAKE_MUTANT_QUALIFICATION=PASS count=10' "$LOG"
-          test "$(grep -Ec '^Q06_REVIEW_INTAKE_MUTANT_[a-z0-9-]+=KILLED_BY_ASSERTION$' "$LOG")" -eq 10
+          grep -Fxq 'Q06_REVIEW_INTAKE_MUTANT_QUALIFICATION=PASS count=13' "$LOG"
+          test "$(grep -Ec '^Q06_REVIEW_INTAKE_MUTANT_[a-z0-9-]+=KILLED_BY_ASSERTION$' "$LOG")" -eq 13
           grep -E '^Q06_REVIEW_INTAKE_MUTANT_[a-z0-9-]+=KILLED_BY_ASSERTION$' "$LOG"
           test "$(git rev-parse HEAD)" = "$TARGET_SHA"
           git diff --exit-code --quiet
-          echo Q06_UNTRUSTED_REVIEW_TEN_MUTANTS_EXACT=PASS
+          echo Q06_UNTRUSTED_REVIEW_THIRTEEN_MUTANTS_EXACT=PASS
