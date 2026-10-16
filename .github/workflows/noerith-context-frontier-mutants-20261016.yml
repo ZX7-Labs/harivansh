@@ -1,0 +1,53 @@
+name: NOERITH context source dependency exact assertion mutants
+on:
+  push:
+    branches: [build/noerith-context-frontier-verify-20261016]
+    paths: [.github/workflows/noerith-context-frontier-mutants-20261016.yml]
+permissions:
+  contents: read
+jobs:
+  exact-assertion-mutation-evidence:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    env:
+      TARGET_SHA: 5642db0ed5c6732cd855108aef858b35bc36b81d
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Source-free relay
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Exact private read-only checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Real named assertion mutant qualification
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          LOGDIR="$RUNNER_TEMP/context-dep-mutant-private-logs"
+          mkdir -p "$LOGDIR"
+          chmod 700 "$LOGDIR"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --no-self-update >"$LOGDIR/toolchain.log" 2>&1
+          export RUSTUP_TOOLCHAIN=1.98.1
+          cd "$ROOT/tools"
+          if python3 -m unittest -q test_verify_context_frontier_mutations.py >"$LOGDIR/harness.log" 2>&1; then
+            echo CONTEXT_DEP_MUTATION_GRAMMAR=PASS
+          else
+            echo CONTEXT_DEP_MUTATION_GRAMMAR=FAIL
+            exit 1
+          fi
+          if python3 verify_context_frontier_mutations.py >"$LOGDIR/mutants.log" 2>&1; then
+            test "$(grep -Ec '^CONTEXT_FRONTIER_MUTANT_[a-z0-9-]+=KILLED_BY_ASSERTION$' "$LOGDIR/mutants.log")" -eq 9
+            grep -Fxq 'CONTEXT_FRONTIER_ASSERTION_MUTANTS=PASS count=9' "$LOGDIR/mutants.log"
+            echo CONTEXT_DEP_NINE_MUTANTS=PASS
+          else
+            echo CONTEXT_DEP_NINE_MUTANTS=FAIL
+            exit 1
+          fi
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          git -C "$ROOT" diff --quiet --exit-code
+          echo CONTEXT_DEP_EXACT_MUTATION_ASSERTION_EVIDENCE=PASS
