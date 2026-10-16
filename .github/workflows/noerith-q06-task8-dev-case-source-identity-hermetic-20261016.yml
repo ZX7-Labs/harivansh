@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
-      TARGET_SHA: dfe7357e6762701bad743f97f3fcb8bf24cc5bb2
+      TARGET_SHA: f9937a8673b9523d7795db21f5a742f5ca2c1a1a
     steps:
       - uses: actions/checkout@v4
         with:
