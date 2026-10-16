@@ -1,0 +1,69 @@
+name: WP08 exact private active frontier adversarial gates
+on:
+  push:
+    branches: [build/noerith-wp08-active-frontier-verify-20261016]
+    paths: [.github/workflows/noerith-wp08-active-frontier-exact-private-20261016.yml]
+permissions:
+  contents: read
+jobs:
+  exact-private-active-frontier:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      TARGET_SHA: ba95cd5468367e6a5634c4634aedf85cf2edace4
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Source-free relay contract
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Exact private read-only transient checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Baseline and adversarial exact private WP08 gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          LOGDIR="$RUNNER_TEMP/wp08-active-private-logs"
+          mkdir -p "$LOGDIR"
+          chmod 700 "$LOGDIR"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          cd "$ROOT/experiments/wp08-fairness"
+          check() {
+            local name="$1"
+            shift
+            if "$@" >"$LOGDIR/$name.log" 2>&1; then
+              echo "WP08_ACTIVE_$name=PASS"
+            else
+              echo "WP08_ACTIVE_$name=FAIL"
+              exit 1
+            fi
+          }
+          check python python3 --version
+          check compile python3 -c "import ast,pathlib;names=['fairness_reference.py','test_fairness_reference.py','verify_mutations.py','test_mutation_verifier.py','active_frontier_reference.py','test_active_frontier_reference.py','verify_active_frontier_mutations.py'];[ast.parse(pathlib.Path(p).read_text()) for p in names]"
+          check baseline python3 -m unittest -q test_fairness_reference.py
+          check verifier-grammar python3 -m unittest -q test_mutation_verifier.py
+          check active-unit python3 -m unittest -q test_active_frontier_reference.py
+          if python3 verify_mutations.py >"$LOGDIR/base-mutants.log" 2>&1; then
+            test "$(grep -Ec '^WP08_MUTANT_[a-z0-9-]+=KILLED_BY_ASSERTION$' "$LOGDIR/base-mutants.log")" -eq 12
+            grep -Fxq 'WP08_SYNTHETIC_NAMED_ASSERTION_MUTANTS=PASS count=12' "$LOGDIR/base-mutants.log"
+            echo WP08_ACTIVE_base-mutants=PASS
+          else
+            echo WP08_ACTIVE_base-mutants=FAIL
+            exit 1
+          fi
+          if python3 verify_active_frontier_mutations.py >"$LOGDIR/active-mutants.log" 2>&1; then
+            test "$(grep -Ec '^WP08_ACTIVE_FRONTIER_MUTANT_[a-z0-9-]+=KILLED_BY_ASSERTION$' "$LOGDIR/active-mutants.log")" -eq 13
+            grep -Fxq 'WP08_ACTIVE_FRONTIER_ASSERTION_MUTANTS=PASS count=13' "$LOGDIR/active-mutants.log"
+            echo WP08_ACTIVE_active-mutants=PASS
+          else
+            echo WP08_ACTIVE_active-mutants=FAIL
+            exit 1
+          fi
+          check pure-boundary python3 -c "import ast,pathlib;ban={'subprocess','requests','socket','ctypes','pickle','os','sys','importlib'};roots=set();files=['fairness_reference.py','active_frontier_reference.py'];[(roots.update(x.name.split('.')[0] for x in n.names) if isinstance(n,ast.Import) else roots.add((n.module or '').split('.')[0]) if isinstance(n,ast.ImportFrom) else None) for p in files for n in ast.walk(ast.parse(pathlib.Path(p).read_text()))];assert not roots & ban"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          git -C "$ROOT" diff --quiet --exit-code
+          echo WP08_ACTIVE_EXACT_PRIVATE_SYNTHETIC_ALL_GATES=PASS
