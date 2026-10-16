@@ -1,0 +1,54 @@
+name: NOERITH S03 exact durable transport-result replay regression
+on:
+  push:
+    branches: [build/noerith-kernel-callback-verify-20261016]
+    paths: [.github/workflows/noerith-s03-transport-result-singleassign-exact-20261016.yml]
+permissions:
+  contents: read
+jobs:
+  exact-s03:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      TARGET_SHA: 94c68b63c648dc44b6a4e797d2676d87573d0bf7
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Source-free relay
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Exact private read-only checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Pinned Rust 1.98.1 S03 and full-workspace checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          LOGDIR="$RUNNER_TEMP/private-s03-singleassign"
+          mkdir -p "$LOGDIR"
+          chmod 700 "$LOGDIR"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          check() {
+            local label="$1"
+            shift
+            if "$@" >"$LOGDIR/$label.log" 2>&1; then
+              echo "S03_TRANSPORT_RESULT_$label=PASS"
+            else
+              echo "S03_TRANSPORT_RESULT_$label=FAIL"
+              exit 1
+            fi
+          }
+          check toolchain rustup toolchain install 1.98.1 --profile minimal --component clippy --component rustfmt --no-self-update
+          export RUSTUP_TOOLCHAIN=1.98.1
+          cd "$ROOT"
+          check accepted-replay cargo test --locked -p noerith-effects --test s03_foundation s03_17_recorded_provider_result_cannot_be_replaced_by_later_replay
+          check ambiguous-replay cargo test --locked -p noerith-effects --test s03_foundation s03_18_ambiguous_effect_result_rejects_late_contradictory_acceptance
+          check effects-full cargo test --locked -p noerith-effects
+          check workspace-full cargo test --locked --workspace
+          check strict-clippy cargo clippy --locked --workspace --all-targets -- -D warnings
+          check rustfmt cargo fmt --all -- --check
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --quiet --exit-code
+          echo S03_TRANSPORT_RESULT_EXACT_ALL_GATES=PASS
