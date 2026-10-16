@@ -1,0 +1,55 @@
+name: NOERITH context selected dependency exact full Rust verification
+on:
+  push:
+    branches: [build/noerith-context-frontier-verify-20261016]
+    paths: [.github/workflows/noerith-context-frontier-full-gates-20261016.yml]
+permissions:
+  contents: read
+jobs:
+  private-source-exact-gates:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      TARGET_SHA: c38367113ad45709137681afb14438ebcfde0b3b
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Source-free relay contract
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Read-only exact private source checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Exact Rust 1.98.1 full workspace qualification
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          LOGDIR="$RUNNER_TEMP/context-frontier-private-tests"
+          mkdir -p "$LOGDIR"
+          chmod 700 "$LOGDIR"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          check() {
+            local label="$1"
+            shift
+            if "$@" >"$LOGDIR/$label.log" 2>&1; then
+              echo "CONTEXT_FRONTIER_$label=PASS"
+            else
+              echo "CONTEXT_FRONTIER_$label=FAIL"
+              exit 1
+            fi
+          }
+          check toolchain rustup toolchain install 1.98.1 --profile minimal --component clippy --component rustfmt --no-self-update
+          export RUSTUP_TOOLCHAIN=1.98.1
+          cd "$ROOT"
+          check focused-exact cargo test --locked -p noerith-cognition --test context_compiler selected_exact_source_cannot_escape_frontier_dependency_tracking
+          check focused-fact cargo test --locked -p noerith-cognition --test structured_context selected_protected_structured_fact_needs_its_exact_frontier_dependency
+          check focused-fidelity cargo test --locked -p noerith-cognition --test fidelity sufficient_report_must_not_mask_selected_source_missing_from_frontier
+          check cognition-full cargo test --locked -p noerith-cognition
+          check workspace-full cargo test --locked --workspace
+          check strict-clippy cargo clippy --locked --workspace --all-targets -- -D warnings
+          check rustfmt cargo fmt --all -- --check
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --quiet --exit-code
+          echo CONTEXT_FRONTIER_EXACT_ALL_GATES=PASS
