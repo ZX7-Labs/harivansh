@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
-      TARGET_SHA: b5ac736306dbd558225a588ba1b93beebc069192
+      TARGET_SHA: d5b7c47836cdd4cbc7589030957eff3f3aa1101f
     steps:
       - uses: actions/checkout@v4
         with:
@@ -31,10 +31,10 @@ jobs:
           rustup toolchain install 1.98.1 --profile minimal --no-self-update >"$RUNNER_TEMP/rustup.log" 2>&1
           export RUSTUP_TOOLCHAIN=1.98.1
           cd "$ROOT"
-          if cargo test --locked -p noerith-kernel --lib premature_provider_callback_does_not_poison_later_valid_receipt >"$LOG" 2>&1; then
-            echo KERNEL_CALLBACK_RED=UNEXPECTED_PASS
+          if cargo test --locked -p noerith-kernel --lib reused_callback_id_with_opposite_outcome_is_integrity_conflict >"$LOG" 2>&1; then
+            echo KERNEL_CALLBACK_CONFLICT_RED=UNEXPECTED_PASS
             exit 1
           fi
-          grep -Eq 'premature_provider_callback_does_not_poison_later_valid_receipt.*FAILED' "$LOG"
+          grep -Eq 'reused_callback_id_with_opposite_outcome_is_integrity_conflict.*FAILED' "$LOG"
           grep -Fq 'assertion' "$LOG"
-          echo KERNEL_CALLBACK_RED=OBSERVED
+          echo KERNEL_CALLBACK_CONFLICT_RED=OBSERVED
