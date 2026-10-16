@@ -41,15 +41,25 @@ jobs:
                   echo Q06_REVIEW_TICKET_FAIL_CLASS=COMPILATION
                 elif grep -Fq 'test result: FAILED' "$LOGDIR/$name.log"; then
                   echo Q06_REVIEW_TICKET_FAIL_CLASS=RUST_ASSERTION
-                  python3 - "$LOGDIR/$name.log" <<'PY'
-                  import hashlib, re, sys
-                  text = open(sys.argv[1], encoding="utf-8", errors="replace").read()
-                  names = re.findall(r"(?m)^test (\\S+) \\.\\.\\. FAILED$", text)
-                  for label in names[:4]:
-                      print("Q06_REVIEW_TICKET_FAIL_NAME_DIGEST=" + hashlib.sha256(label.encode()).hexdigest()[:16])
-                  if not names:
-                      print("Q06_REVIEW_TICKET_FAIL_NAME_DIGEST=NO_MATCH")
-                  PY
+                  Q06_FAIL_HASH="$(grep -E '^test [^ ]+ \.\.\. FAILED
+                else
+                  echo Q06_REVIEW_TICKET_FAIL_CLASS=OTHER
+                fi
+              fi
+              return 1
+            fi
+          }
+          check toolchain rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy --no-self-update
+          export RUSTUP_TOOLCHAIN=1.98.1
+          check focused cargo test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked --test review_intake_dev
+          check full-crate cargo test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked
+          check strict-clippy cargo clippy --manifest-path tools/q06-memory-context-eval/Cargo.toml --all-targets --locked -- -D warnings
+          check fmt cargo fmt --manifest-path tools/q06-memory-context-eval/Cargo.toml -- --check
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --exit-code --quiet
+          echo Q06_UNVERIFIED_REVIEW_EXACT_ALL_GATES=PASS
+ "$LOGDIR/$name.log" | sha256sum | cut -c1-16)"
+                  echo "Q06_REVIEW_TICKET_FAILING_ASSERTION_DIGEST=$Q06_FAIL_HASH"
                 else
                   echo Q06_REVIEW_TICKET_FAIL_CLASS=OTHER
                 fi
