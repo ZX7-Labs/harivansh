@@ -1,0 +1,55 @@
+name: NOERITH kernel callback exact full Rust validation
+on:
+  push:
+    branches: [build/noerith-kernel-callback-verify-20261016]
+    paths: [.github/workflows/noerith-kernel-callback-exact-green-20261016.yml]
+permissions:
+  contents: read
+jobs:
+  kernel-source-free-exact:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    env:
+      TARGET_SHA: 5f2005e0e811c731ed8bf547b355c36b612cc548
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Source-free relay contract
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Read-only exact private checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Exact private Rust and workspace gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          LOGDIR="$RUNNER_TEMP/noerith-kernel-callback-checks"
+          mkdir -p "$LOGDIR"
+          chmod 700 "$LOGDIR"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          check() {
+            local label="$1"
+            shift
+            if "$@" >"$LOGDIR/$label.log" 2>&1; then
+              echo "KERNEL_CALLBACK_$label=PASS"
+            else
+              echo "KERNEL_CALLBACK_$label=FAIL"
+              exit 1
+            fi
+          }
+          check toolchain rustup toolchain install 1.98.1 --profile minimal --component clippy --component rustfmt --no-self-update
+          export RUSTUP_TOOLCHAIN=1.98.1
+          cd "$ROOT"
+          check focused-premature cargo test --locked -p noerith-kernel --lib premature_provider_callback_does_not_poison_later_valid_receipt
+          check focused-terminal cargo test --locked -p noerith-kernel --lib terminal_effect_rejects_new_contradictory_callback_without_dedup_poisoning
+          check focused-integrity cargo test --locked -p noerith-kernel --lib reused_callback_id_with_opposite_outcome_is_integrity_conflict
+          check kernel-full cargo test --locked -p noerith-kernel
+          check workspace-full cargo test --locked --workspace
+          check strict-clippy cargo clippy --locked --workspace --all-targets -- -D warnings
+          check rustfmt cargo fmt --all -- --check
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --quiet --exit-code
+          echo KERNEL_CALLBACK_EXACT_SOURCE_FULL_GATES=PASS
