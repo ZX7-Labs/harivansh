@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
-      TARGET_SHA: 115528f9699773bf05d9d1823587ed861c18a2bf
+      TARGET_SHA: e9d265dc97330c4537b8a7a5ea9f3271d5ea71f3
       PYTHONDONTWRITEBYTECODE: "1"
     steps:
       - uses: actions/checkout@v4
@@ -42,8 +42,9 @@ jobs:
             fi
           }
           check interpreter python3 --version
-          check compile python3 -c "import ast,pathlib;[ast.parse(pathlib.Path(p).read_text()) for p in ['fairness_reference.py','test_fairness_reference.py']]"
+          check compile python3 -c "import ast,pathlib;[ast.parse(pathlib.Path(p).read_text()) for p in ['fairness_reference.py','test_fairness_reference.py','verify_mutations.py']]"
           check assertions python3 -m unittest -q test_fairness_reference.py
+          check mutants python3 verify_mutations.py
           check import-boundary python3 -c "import ast,pathlib; t=ast.parse(pathlib.Path('fairness_reference.py').read_text()); banned={'subprocess','requests','socket','ctypes','pickle','os','sys','importlib'}; roots={item.name.split('.')[0] for n in ast.walk(t) for item in (n.names if isinstance(n,ast.Import) else []) if getattr(item,'name',None)}; assert not roots&banned"
           test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
           git -C "$ROOT" diff --quiet --exit-code
