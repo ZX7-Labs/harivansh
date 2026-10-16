@@ -1,0 +1,50 @@
+name: Q06 private source-bound UNVERIFIED review proposal Rust full qualification
+on:
+  push:
+    branches: [build/noerith-q06-task8-dev-seedfile-20261015]
+    paths: [.github/workflows/noerith-q06-dev-untrusted-review-intake-green-20261016.yml]
+permissions:
+  contents: read
+jobs:
+  full-private-review-boundary:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 42
+    env:
+      TARGET_SHA: 3229072d37b872bc01a2109851bf03a726f73c9d
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: bash tests/test-noerith-relay-contract.sh
+      - name: Exact ephemeral private source without public mirror
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Strict Rust reviewed-claim parsing focused full Clippy fmt
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          LOGDIR="${RUNNER_TEMP}/q06-unverified-review-private"
+          mkdir -p "$LOGDIR"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          cd "$ROOT"
+          check() {
+            local name="$1"
+            shift
+            if "$@" >"$LOGDIR/$name.log" 2>&1; then
+              echo "Q06_UNVERIFIED_REVIEW_${name}=PASS"
+            else
+              echo "Q06_UNVERIFIED_REVIEW_${name}=FAIL"
+              return 1
+            fi
+          }
+          check toolchain rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy --no-self-update
+          export RUSTUP_TOOLCHAIN=1.98.1
+          check focused cargo test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked --test review_intake_dev
+          check full-crate cargo test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked
+          check strict-clippy cargo clippy --manifest-path tools/q06-memory-context-eval/Cargo.toml --all-targets --locked -- -D warnings
+          check fmt cargo fmt --manifest-path tools/q06-memory-context-eval/Cargo.toml -- --check
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --exit-code --quiet
+          echo Q06_UNVERIFIED_REVIEW_EXACT_ALL_GATES=PASS
