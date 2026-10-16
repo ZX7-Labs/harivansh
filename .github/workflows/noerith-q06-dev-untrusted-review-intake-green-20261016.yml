@@ -41,6 +41,15 @@ jobs:
                   echo Q06_REVIEW_TICKET_FAIL_CLASS=COMPILATION
                 elif grep -Fq 'test result: FAILED' "$LOGDIR/$name.log"; then
                   echo Q06_REVIEW_TICKET_FAIL_CLASS=RUST_ASSERTION
+                  python3 - "$LOGDIR/$name.log" <<'PY'
+                  import hashlib, re, sys
+                  text = open(sys.argv[1], encoding="utf-8", errors="replace").read()
+                  names = re.findall(r"(?m)^test (\\S+) \\.\\.\\. FAILED$", text)
+                  for label in names[:4]:
+                      print("Q06_REVIEW_TICKET_FAIL_NAME_DIGEST=" + hashlib.sha256(label.encode()).hexdigest()[:16])
+                  if not names:
+                      print("Q06_REVIEW_TICKET_FAIL_NAME_DIGEST=NO_MATCH")
+                  PY
                 else
                   echo Q06_REVIEW_TICKET_FAIL_CLASS=OTHER
                 fi
