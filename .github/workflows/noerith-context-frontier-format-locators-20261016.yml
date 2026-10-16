@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
-      TARGET_SHA: c38367113ad45709137681afb14438ebcfde0b3b
+      TARGET_SHA: 5642db0ed5c6732cd855108aef858b35bc36b81d
     steps:
       - uses: actions/checkout@v4
         with:
@@ -41,6 +41,15 @@ jobs:
           print("CONTEXT_DEP_FMT_HUNKS="+str(len(entries)))
           for package,name,row in entries[:60]:
               print("CONTEXT_DEP_FMT_HUNK="+package+"/"+name+":"+row)
+          blocks=re.split(r'(?m)^Diff in ',s)[1:]
+          for i,block in enumerate(blocks[:12]):
+              rows=[line for line in block.splitlines()[1:] if (line.startswith('-') or line.startswith('+')) and not line.startswith(('---','+++'))]
+              for line in rows[:24]:
+                  tag='BEFORE' if line.startswith('-') else 'AFTER'
+                  body=line[1:]
+                  indent=len(body)-len(body.lstrip(' '))
+                  punct=''.join(c for c in body if c in '{}(),;[]')
+                  print('CONTEXT_DEP_FMT_SHAPE='+str(i)+':'+tag+':'+str(indent)+':'+str(len(body))+':'+punct)
           PY
           fi
           test "$(git rev-parse HEAD)" = "$TARGET_SHA"
