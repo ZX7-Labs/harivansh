@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 55
     env:
-      TARGET_SHA: 5642db0ed5c6732cd855108aef858b35bc36b81d
+      TARGET_SHA: b77e6b9d390219febd5cdc7fce566be7d7783c11
       PYTHONDONTWRITEBYTECODE: "1"
     steps:
       - uses: actions/checkout@v4
