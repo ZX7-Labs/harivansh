@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
-      TARGET_SHA: a82948f28b99bae0d94de1271cbfaafcabe4129f
+      TARGET_SHA: 5f8aeef8cca1d599cf7c02c05ab55872aa491b16
     steps:
       - uses: actions/checkout@v4
         with:
@@ -46,6 +46,9 @@ jobs:
           check focused-exact cargo test --locked -p noerith-cognition --test context_compiler selected_exact_source_cannot_escape_frontier_dependency_tracking
           check focused-fact cargo test --locked -p noerith-cognition --test structured_context selected_protected_structured_fact_needs_its_exact_frontier_dependency
           check focused-fidelity cargo test --locked -p noerith-cognition --test fidelity sufficient_report_must_not_mask_selected_source_missing_from_frontier
+          check focused-derived cargo test --locked -p noerith-cognition --test context_compiler selected_derived_view_cannot_omit_extra_parent_independent_dependency
+          check focused-excluded cargo test --locked -p noerith-cognition --test context_compiler excluded_nonessential_candidate_dependency_does_not_block_safe_selected_source
+          check focused-source-version cargo test --locked -p noerith-cognition --test context_compiler selected_exact_source_version_dependency_must_remain_current
           check cognition-full cargo test --locked -p noerith-cognition
           check workspace-full cargo test --locked --workspace
           check strict-clippy cargo clippy --locked --workspace --all-targets -- -D warnings
