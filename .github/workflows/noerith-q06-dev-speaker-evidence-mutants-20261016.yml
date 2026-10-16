@@ -1,0 +1,42 @@
+name: Q06 four exact private source speaker evidence assertion mutants
+on:
+  push:
+    branches: [build/noerith-q06-task8-dev-seedfile-20261015]
+    paths: [.github/workflows/noerith-q06-dev-speaker-evidence-mutants-20261016.yml]
+permissions:
+  contents: read
+jobs:
+  pinned-private-four-speaker-mutants:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      TARGET_SHA: 177dff3a4543dbdece531704615ef81c93748c2f
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: bash tests/test-noerith-relay-contract.sh
+      - name: Pinned exact private read-only checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Kill four real Rust role/evidence assertions, not compile errors
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          LOG="${RUNNER_TEMP}/q06-private-speaker-mutants.log"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --no-self-update >"${RUNNER_TEMP}/q06-rust-install.log" 2>&1
+          cd "$ROOT"
+          if ! python3 tools/verify_q06_dev_speaker_evidence_mutants.py >"$LOG" 2>&1; then
+            grep -E '^Q06_SPEAKER_MUTANT_QUALIFICATION=FAIL Q06_SPEAKER_MUTANT_[a-z0-9-]+=(SOURCE_MISMATCH|SURVIVED|WRONG_ASSERTION|COMPILER_FAILURE_NOT_KILL)$' "$LOG" || true
+            echo Q06_SPEAKER_FOUR_MUTANTS_EXACT=FAIL
+            exit 1
+          fi
+          grep -Fxq 'Q06_SPEAKER_MUTANT_QUALIFICATION=PASS count=4' "$LOG"
+          test "$(grep -Ec '^Q06_SPEAKER_MUTANT_[a-z0-9-]+=KILLED_BY_ASSERTION$' "$LOG")" -eq 4
+          grep -E '^Q06_SPEAKER_MUTANT_[a-z0-9-]+=KILLED_BY_ASSERTION$' "$LOG"
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --exit-code --quiet
+          echo Q06_SPEAKER_FOUR_MUTANTS_EXACT=PASS
