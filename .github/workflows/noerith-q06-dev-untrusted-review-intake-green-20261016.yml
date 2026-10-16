@@ -36,39 +36,13 @@ jobs:
               echo "Q06_UNVERIFIED_REVIEW_${name}=PASS"
             else
               echo "Q06_UNVERIFIED_REVIEW_${name}=FAIL"
-              if [ "$name" = "focused" ]; then
-                if grep -Eq 'error\\[E[0-9]+\\]|^error: could not compile|^error: failed to' "$LOGDIR/$name.log"; then
-                  echo Q06_REVIEW_TICKET_FAIL_CLASS=COMPILATION
-                elif grep -Fq 'test result: FAILED' "$LOGDIR/$name.log"; then
-                  echo Q06_REVIEW_TICKET_FAIL_CLASS=RUST_ASSERTION
-                  Q06_FAIL_HASH="$(grep -E '^test [^ ]+ \.\.\. FAILED
-                else
-                  echo Q06_REVIEW_TICKET_FAIL_CLASS=OTHER
-                fi
-              fi
               return 1
             fi
           }
           check toolchain rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy --no-self-update
           export RUSTUP_TOOLCHAIN=1.98.1
-          check focused cargo test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked --test review_intake_dev
-          check full-crate cargo test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked
-          check strict-clippy cargo clippy --manifest-path tools/q06-memory-context-eval/Cargo.toml --all-targets --locked -- -D warnings
-          check fmt cargo fmt --manifest-path tools/q06-memory-context-eval/Cargo.toml -- --check
-          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
-          git diff --exit-code --quiet
-          echo Q06_UNVERIFIED_REVIEW_EXACT_ALL_GATES=PASS
- "$LOGDIR/$name.log" | sha256sum | cut -c1-16)"
-                  echo "Q06_REVIEW_TICKET_FAILING_ASSERTION_DIGEST=$Q06_FAIL_HASH"
-                else
-                  echo Q06_REVIEW_TICKET_FAIL_CLASS=OTHER
-                fi
-              fi
-              return 1
-            fi
-          }
-          check toolchain rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy --no-self-update
-          export RUSTUP_TOOLCHAIN=1.98.1
+          check ticket-distinct cargo test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked --test review_intake_dev pending_ticket_binds_distinct_evidence_without_creating_trusted_speaker
+          check ticket-replay cargo test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked --test review_intake_dev pending_ticket_replays_source_bound_bytes_but_never_approves_a_speaker
           check focused cargo test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked --test review_intake_dev
           check full-crate cargo test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked
           check strict-clippy cargo clippy --manifest-path tools/q06-memory-context-eval/Cargo.toml --all-targets --locked -- -D warnings
