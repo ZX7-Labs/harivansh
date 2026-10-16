@@ -50,7 +50,7 @@ jobs:
             grep -Fxq 'WP08_SYNTHETIC_NAMED_ASSERTION_MUTANTS=PASS count=12' "$LOGDIR/mutants.log"
             echo WP08_SYNTHETIC_mutants=PASS
           else
-            python3 -c 'import pathlib,sys; s=pathlib.Path(sys.argv[1]).read_text(errors="replace"); reasons=("MUTATION_NOT_SINGLE_EXACT_MATCH","NOT_KILLED_BY_EXPECTED_ASSERTION","PRISTINE_SOURCE_MUTATED"); names=("force-disabled","service-recency-collapsed","stale-service-clock-accepted","duplicate-id-accepted","writer-reader-collision","reader-writer-collision","control-after-ordinary","distant-deadline-boosted","capacity-deferral-hidden","deadline-risk-hidden","forged-control-class","scope-grammar-bypassed"); reason=next((r for r in reasons if r in s),"UNCLASSIFIED_FAILURE"); mutant=next((n for n in names if n in s),"UNKNOWN"); print("WP08_SAFE_MUTATION_DIAG="+reason+":"+mutant)' "$LOGDIR/mutants.log"
+            python3 -c 'import pathlib,re,sys; s=pathlib.Path(sys.argv[1]).read_text(errors="replace"); m=re.findall(r"(MUTATION_NOT_SINGLE_EXACT_MATCH|NOT_KILLED_BY_EXPECTED_ASSERTION):([a-z0-9-]+)",s); v=(m[-1][0]+":"+m[-1][1]) if m else ("PRISTINE_SOURCE_MUTATED:UNKNOWN" if "PRISTINE_SOURCE_MUTATED" in s else "UNCLASSIFIED_FAILURE:UNKNOWN"); print("WP08_SAFE_MUTATION_DIAG="+v)' "$LOGDIR/mutants.log"
             echo WP08_SYNTHETIC_mutants=FAIL
             exit 1
           fi
