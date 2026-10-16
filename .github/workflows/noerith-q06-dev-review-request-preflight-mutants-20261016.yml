@@ -1,0 +1,42 @@
+name: Q06 exact private unsigned review request ten genuine Rust assertion mutations
+on:
+  push:
+    branches: [build/noerith-q06-task8-dev-seedfile-20261015]
+    paths: [.github/workflows/noerith-q06-dev-review-request-preflight-mutants-20261016.yml]
+permissions:
+  contents: read
+jobs:
+  source-bound-ten-request-mutants:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      TARGET_SHA: dc711f87ae8ea0b3f4e3336772c4c7b02445a6c6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: bash tests/test-noerith-relay-contract.sh
+      - name: Exact read-only ephemeral private checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Verify ten real private Rust assertion kills without source logs
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          LOG="${RUNNER_TEMP}/q06-private-request-mutants.log"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --no-self-update >"${RUNNER_TEMP}/q06-toolchain-private.log" 2>&1
+          cd "$ROOT"
+          if ! python3 tools/verify_q06_dev_review_request_mutants.py >"$LOG" 2>&1; then
+            echo Q06_REQUEST_ASSERTION_MUTANTS_EXACT=FAIL
+            grep -E '^Q06_REQUEST_ASSERTION_MUTANTS=FAIL (Q06_REQUEST_MUTANT_[a-z0-9-]+=(SOURCE_MISMATCH|SURVIVED|WRONG_ASSERTION|COMPILER_FAILURE_NOT_KILL)|Q06_REQUEST_MUTANT_COUNT_MISMATCH|Q06_REQUEST_ORIGINAL_SOURCE_CHANGED)$' "$LOG" || true
+            exit 1
+          fi
+          grep -Fxq 'Q06_REQUEST_ASSERTION_MUTANTS=PASS count=10' "$LOG"
+          test "$(grep -Ec '^Q06_REQUEST_MUTANT_[a-z0-9-]+=KILLED_BY_ASSERTION$' "$LOG")" -eq 10
+          grep -E '^Q06_REQUEST_MUTANT_[a-z0-9-]+=KILLED_BY_ASSERTION$' "$LOG"
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --exit-code --quiet
+          echo Q06_REQUEST_ASSERTION_MUTANTS_EXACT=PASS
