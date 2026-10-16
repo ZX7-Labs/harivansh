@@ -43,7 +43,7 @@ jobs:
           check toolchain rustup toolchain install 1.98.1 --profile minimal --component clippy --component rustfmt --no-self-update
           export RUSTUP_TOOLCHAIN=1.98.1
           cd "$ROOT"
-          check grammar python3 -m unittest -q discover -s tools -p test_verify_q04_strict_applicability_mutations.py
+          check grammar python3 -m unittest discover -s tools -p test_verify_q04_strict_applicability_mutations.py -q
           if python3 tools/verify_q04_strict_applicability_mutations.py >"$LOGDIR/mutations.log" 2>&1; then
             test "$(grep -Ec '^Q04_STRICT_MUTANT_[a-z0-9-]+=KILLED_BY_ASSERTION$' "$LOGDIR/mutations.log")" -eq 8
             grep -Fxq 'Q04_STRICT_ASSERTION_MUTANTS=PASS count=8' "$LOGDIR/mutations.log"
