@@ -1,0 +1,96 @@
+name: Q06 exact private DEV runtime Linux peak RSS empirical baseline
+on:
+  push:
+    branches: [build/noerith-q06-task8-dev-seedfile-20261015]
+    paths: [.github/workflows/noerith-q06-dev-runtime-rss-baseline-20261016.yml]
+permissions:
+  contents: read
+jobs:
+  measured-bounded-dev-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      TARGET_SHA: 39103d5ebe6a5371d160568dffbcfe5339d8b137
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify source-free public relay
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Read-only ephemeral exact private source
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Compile without printing source or test output
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          LOGDIR="${RUNNER_TEMP}/q06-rss-private"
+          mkdir -p "$LOGDIR"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          test -x /usr/bin/time
+          rustup toolchain install 1.98.1 --profile minimal --no-self-update >"$LOGDIR/toolchain.log" 2>&1
+          cd "$ROOT"
+          cargo +1.98.1 test --manifest-path tools/q06-memory-context-eval/Cargo.toml --locked --no-run --message-format=json             --test realization_all_strata_incomplete_history_dev             --test dev_case_crossprocess_commitment >"$LOGDIR/artifacts-private.jsonl" 2>"$LOGDIR/compile-private.log"
+          echo Q06_RSS_SOURCE_PINNED_BUILD=PASS
+      - name: Execute only actual Rust test binaries and show bounded metrics
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          LOGDIR="${RUNNER_TEMP}/q06-rss-private"
+          cd "$ROOT"
+          python3 - <<'PY'
+          import json, os, pathlib, statistics, subprocess
+          root = pathlib.Path(os.environ["RUNNER_TEMP"]) / "q06-rss-private"
+          compiled = {}
+          for row in (root / "artifacts-private.jsonl").open(encoding="utf-8"):
+              try:
+                  info = json.loads(row)
+              except json.JSONDecodeError:
+                  continue
+              if info.get("reason") != "compiler-artifact":
+                  continue
+              target = info.get("target", {})
+              exe = info.get("executable")
+              name = target.get("name")
+              if exe and name in {"realization_all_strata_incomplete_history_dev", "dev_case_crossprocess_commitment"}:
+                  compiled[name] = pathlib.Path(exe)
+          cases = (
+              ("69_FAMILY_VALIDATION", "realization_all_strata_incomplete_history_dev",
+               "unreviewed_semantic_events_in_all_source_family_strata_fail_complete_history_closed"),
+              ("FRESH_PROCESS_THREE_DIGESTS", "dev_case_crossprocess_commitment",
+               "fresh_os_process_must_recompute_exact_dev_case_population_and_view"),
+          )
+          assert len(compiled) == 2, "Q06_RSS_MISSING_COMPILED_SOURCE_TEST"
+          for tag, binary, test_name in cases:
+              exe = compiled[binary]
+              if not exe.is_file() or not os.access(exe, os.X_OK):
+                  raise SystemExit("Q06_RSS_MISSING_EXECUTABLE")
+              rss, elapsed = [], []
+              for i in range(3):
+                  stats = root / f"{tag}-{i}.stats"
+                  with (root / f"{tag}-{i}.out").open("wb") as out:
+                      result = subprocess.run(
+                          ["/usr/bin/time", "-f", "RSS_KB=%M\\nELAPSED_SEC=%e",
+                           "-o", str(stats), str(exe), "--exact", test_name],
+                          stdout=out, stderr=subprocess.STDOUT, timeout=120, check=False,
+                      )
+                  if result.returncode:
+                      raise SystemExit("Q06_RSS_PRIVATE_TEST_FAILURE_" + tag)
+                  values = dict(line.split("=", 1) for line in stats.read_text().splitlines() if "=" in line)
+                  peak = int(values["RSS_KB"])
+                  duration = float(values["ELAPSED_SEC"])
+                  if peak <= 0 or duration < 0:
+                      raise SystemExit("Q06_RSS_INVALID_SAMPLE_" + tag)
+                  rss.append(peak)
+                  elapsed.append(duration)
+              print(f"Q06_RSS_{tag}_RUNS=3")
+              print(f"Q06_RSS_{tag}_MEDIAN_PEAK_KIB={statistics.median(rss):.0f}")
+              print(f"Q06_RSS_{tag}_MAX_PEAK_KIB={max(rss)}")
+              print(f"Q06_RSS_{tag}_MEDIAN_ELAPSED_SEC={statistics.median(elapsed):.3f}")
+          PY
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --exit-code --quiet
+          echo Q06_RSS_LINUX_TEST_BINARIES_EMPIRICAL_ONLY=PASS
