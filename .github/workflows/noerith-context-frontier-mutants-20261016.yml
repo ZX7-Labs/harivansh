@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 55
     env:
-      TARGET_SHA: a12e7b0d9dcb985fbefe91a28f6a478c0a259a72
+      TARGET_SHA: b57a1bb07cb35af81e7c73141b4962862ff5d19c
       PYTHONDONTWRITEBYTECODE: "1"
     steps:
       - uses: actions/checkout@v4
@@ -41,9 +41,9 @@ jobs:
             exit 1
           fi
           if python3 verify_context_frontier_mutations.py >"$LOGDIR/mutants.log" 2>&1; then
-            test "$(grep -Ec '^CONTEXT_FRONTIER_MUTANT_[a-z0-9-]+=KILLED_BY_ASSERTION$' "$LOGDIR/mutants.log")" -eq 9
-            grep -Fxq 'CONTEXT_FRONTIER_ASSERTION_MUTANTS=PASS count=9' "$LOGDIR/mutants.log"
-            echo CONTEXT_DEP_NINE_MUTANTS=PASS
+            test "$(grep -Ec '^CONTEXT_FRONTIER_MUTANT_[a-z0-9-]+=KILLED_BY_ASSERTION$' "$LOGDIR/mutants.log")" -eq 13
+            grep -Fxq 'CONTEXT_FRONTIER_ASSERTION_MUTANTS=PASS count=13' "$LOGDIR/mutants.log"
+            echo CONTEXT_DEP_THIRTEEN_MUTANTS=PASS
           else
             python3 - "$LOGDIR/mutants.log" <<'PY'
           import pathlib,re,sys
@@ -52,7 +52,7 @@ jobs:
           result=':'.join(m[-1]) if m else 'UNCLASSIFIED:UNKNOWN'
           print('CONTEXT_DEP_SAFE_MUTANT_DIAG='+result)
           PY
-            echo CONTEXT_DEP_NINE_MUTANTS=FAIL
+            echo CONTEXT_DEP_THIRTEEN_MUTANTS=FAIL
             exit 1
           fi
           test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
