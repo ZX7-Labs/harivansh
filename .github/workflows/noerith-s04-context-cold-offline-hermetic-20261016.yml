@@ -1,0 +1,56 @@
+name: NOERITH S04 context exact cold offline hermetic Rust
+on:
+  push:
+    branches: [build/noerith-context-frontier-verify-20261016]
+    paths: [.github/workflows/noerith-s04-context-cold-offline-hermetic-20261016.yml]
+permissions:
+  contents: read
+jobs:
+  exact-private-s04-cold:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      TARGET_SHA: b57a1bb07cb35af81e7c73141b4962862ff5d19c
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Source-free relay requirements
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Exact private read-only transient checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Cold isolated Cargo home and offline qualification
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          LOGDIR="$RUNNER_TEMP/s04-cold-source-private"
+          mkdir -m 700 "$LOGDIR"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          check() {
+            local name="$1"
+            shift
+            if "$@" >"$LOGDIR/$name.log" 2>&1; then
+              echo "S04_COLD_$name=PASS"
+            else
+              echo "S04_COLD_$name=FAIL"
+              exit 1
+            fi
+          }
+          check rustup rustup toolchain install 1.98.1 --profile minimal --component clippy --component rustfmt --no-self-update
+          export RUSTUP_TOOLCHAIN=1.98.1
+          export CARGO_HOME="$RUNNER_TEMP/noerith-isolated-cargo"
+          export CARGO_TARGET_DIR="$RUNNER_TEMP/noerith-isolated-target"
+          mkdir -m 700 "$CARGO_HOME"
+          cd "$ROOT"
+          check fetch cargo fetch --locked
+          export CARGO_NET_OFFLINE=true
+          check offline-full cargo test --locked --offline --workspace
+          check offline-clippy cargo clippy --locked --offline --workspace --all-targets -- -D warnings
+          check exact-fmt cargo fmt --all -- --check
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --quiet --exit-code
+          echo S04_COLD_OFFLINE_EXACT_ALL_GATES=PASS
