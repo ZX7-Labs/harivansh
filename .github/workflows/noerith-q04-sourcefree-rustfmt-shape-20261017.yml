@@ -1,0 +1,55 @@
+name: NOERITH Q04 Rustfmt exact private coordinates only
+on:
+  push:
+    branches: [build/noerith-q04-strict-applicability-verify-20261017]
+    paths: [.github/workflows/noerith-q04-sourcefree-rustfmt-shape-20261017.yml]
+permissions:
+  contents: read
+jobs:
+  shape-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      TARGET_SHA: 78b9bffe6f2aacdc4989e2b972b8843e2df2ae6f
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Source-free relay contract
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Exact read-only private checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Non-source formatter change geometry
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --component rustfmt --no-self-update >"$RUNNER_TEMP/rustup.log" 2>&1
+          export RUSTUP_TOOLCHAIN=1.98.1
+          cp "$ROOT/crates/noerith-policy/src/lib.rs" "$RUNNER_TEMP/pristine-policy.rs"
+          cp "$ROOT/crates/noerith-policy/tests/q04_policy.rs" "$RUNNER_TEMP/pristine-tests.rs"
+          cd "$ROOT"
+          cargo fmt --all >"$RUNNER_TEMP/fmt.log" 2>&1
+          python3 - <<'PY'
+          from difflib import SequenceMatcher
+          from pathlib import Path
+          import os
+          root=Path(os.environ['RUNNER_TEMP'])
+          files=[('src', root/'pristine-policy.rs',Path('crates/noerith-policy/src/lib.rs')),
+                 ('tests',root/'pristine-tests.rs',Path('crates/noerith-policy/tests/q04_policy.rs'))]
+          count=0
+          for label,oldp,newp in files:
+              old=oldp.read_text().splitlines()
+              new=newp.read_text().splitlines()
+              for op,li,ri,lj,rj in SequenceMatcher(None,old,new,autojunk=False).get_opcodes():
+                  if op == 'equal':
+                      continue
+                  count+=1
+                  print('Q04_RUSTFMT_SHAPE='+label+':'+str(li+1)+':'+str(ri-li)+':'+str(rj-lj))
+                  print('Q04_RUSTFMT_LINE_LENGTHS='+','.join(str(len(x)) for x in old[li:ri])+'=>'+','.join(str(len(x)) for x in new[lj:rj]))
+          print('Q04_RUSTFMT_HUNK_COUNT='+str(count))
+          PY
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
