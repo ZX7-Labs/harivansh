@@ -44,7 +44,25 @@ jobs:
           check interpreter python3 --version
           check compile python3 -c "import ast,pathlib;[ast.parse(pathlib.Path(p).read_text()) for p in ['fairness_reference.py','test_fairness_reference.py','verify_mutations.py']]"
           check assertions python3 -m unittest -q test_fairness_reference.py
-          check mutants python3 verify_mutations.py
+          if python3 verify_mutations.py >"$LOGDIR/mutants.log" 2>&1; then
+            test "$(grep -Ec '^WP08_MUTANT_[a-z0-9-]+=KILLED_BY_ASSERTION
+          check import-boundary python3 -c "import ast,pathlib; t=ast.parse(pathlib.Path('fairness_reference.py').read_text()); banned={'subprocess','requests','socket','ctypes','pickle','os','sys','importlib'}; roots={item.name.split('.')[0] for n in ast.walk(t) for item in (n.names if isinstance(n,ast.Import) else []) if getattr(item,'name',None)}; assert not roots&banned"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          git -C "$ROOT" diff --quiet --exit-code
+          echo WP08_PRIVATE_SYNTHETIC_EXACT_SOURCE_GATES=PASS
+ "$LOGDIR/mutants.log")" -eq 12
+            grep -E '^WP08_MUTANT_[a-z0-9-]+=KILLED_BY_ASSERTION
+          check import-boundary python3 -c "import ast,pathlib; t=ast.parse(pathlib.Path('fairness_reference.py').read_text()); banned={'subprocess','requests','socket','ctypes','pickle','os','sys','importlib'}; roots={item.name.split('.')[0] for n in ast.walk(t) for item in (n.names if isinstance(n,ast.Import) else []) if getattr(item,'name',None)}; assert not roots&banned"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          git -C "$ROOT" diff --quiet --exit-code
+          echo WP08_PRIVATE_SYNTHETIC_EXACT_SOURCE_GATES=PASS
+ "$LOGDIR/mutants.log"
+            echo WP08_SYNTHETIC_mutants=PASS
+          else
+            grep -Eo '(NOT_KILLED_BY_EXPECTED_ASSERTION|MUTATION_NOT_SINGLE_EXACT_MATCH):[a-z0-9-]+' "$LOGDIR/mutants.log" | tail -1 || true
+            echo WP08_SYNTHETIC_mutants=FAIL
+            exit 1
+          fi
           check import-boundary python3 -c "import ast,pathlib; t=ast.parse(pathlib.Path('fairness_reference.py').read_text()); banned={'subprocess','requests','socket','ctypes','pickle','os','sys','importlib'}; roots={item.name.split('.')[0] for n in ast.walk(t) for item in (n.names if isinstance(n,ast.Import) else []) if getattr(item,'name',None)}; assert not roots&banned"
           test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
           git -C "$ROOT" diff --quiet --exit-code
