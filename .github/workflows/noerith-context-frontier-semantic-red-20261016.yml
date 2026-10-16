@@ -1,0 +1,45 @@
+name: NOERITH context selected dependency semantic RED
+on:
+  push:
+    branches: [build/noerith-context-frontier-verify-20261016]
+    paths: [.github/workflows/noerith-context-frontier-semantic-red-20261016.yml]
+permissions:
+  contents: read
+jobs:
+  exact-source-assertion-red:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      TARGET_SHA: 56ad03e7bc1c199e8a196ea25aada6ee79cae4bb
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Source-free relay contract
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Read-only exact private source checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Confirm genuine compiled semantic assertion RED
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          LOG="$RUNNER_TEMP/context-frontier-red.log"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --no-self-update >"$RUNNER_TEMP/rustup.log" 2>&1
+          export RUSTUP_TOOLCHAIN=1.98.1
+          cd "$ROOT"
+          if cargo test --locked -p noerith-cognition --test context_compiler selected_exact_source_cannot_escape_frontier_dependency_tracking >"$LOG" 2>&1; then
+            echo CONTEXT_FRONTIER_ASSERTION_RED=UNEXPECTED_PASS
+            exit 1
+          fi
+          if grep -Eq 'selected_exact_source_cannot_escape_frontier_dependency_tracking.*FAILED' "$LOG" && grep -Fq 'assertion' "$LOG" && grep -Fq 'test result: FAILED.' "$LOG"; then
+            echo CONTEXT_FRONTIER_ASSERTION_RED=OBSERVED
+          else
+            echo CONTEXT_FRONTIER_ASSERTION_RED=WRONG_FAILURE_CLASS
+            exit 1
+          fi
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --quiet --exit-code
