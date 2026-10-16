@@ -1,0 +1,45 @@
+name: NOERITH Q04 strict applicability semantic RED
+on:
+  push:
+    branches: [build/noerith-q04-strict-applicability-verify-20261017]
+    paths: [.github/workflows/noerith-q04-strict-applicability-red-20261017.yml]
+permissions:
+  contents: read
+jobs:
+  q04-semantic-red:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      TARGET_SHA: 0f7bcf26ca5538de8bfe998cc48289c17ec551bb
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Source-free relay security check
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Exact ephemeral private source checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Assert test-first exact-source Rust semantic RED only
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          LOG="$RUNNER_TEMP/q04-test-red.log"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --no-self-update >"$RUNNER_TEMP/rustup.log" 2>&1
+          export RUSTUP_TOOLCHAIN=1.98.1
+          cd "$ROOT"
+          if cargo test --locked -p noerith-policy --test q04_policy q04_strict_expected_nonapplicable_requires_verified_current_evidence >"$LOG" 2>&1; then
+            echo Q04_STRICT_NONAPPLICABLE_ASSERTION_RED=UNEXPECTED_PASS
+            exit 1
+          fi
+          if grep -Eq '^test q04_strict_expected_nonapplicable_requires_verified_current_evidence .* FAILED$' "$LOG" && grep -Fq 'assertion' "$LOG" && grep -Fq 'test result: FAILED.' "$LOG"; then
+            echo Q04_STRICT_NONAPPLICABLE_ASSERTION_RED=OBSERVED
+          else
+            echo Q04_STRICT_NONAPPLICABLE_ASSERTION_RED=WRONG_FAILURE_CLASS
+            exit 1
+          fi
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --quiet --exit-code
