@@ -36,6 +36,9 @@ jobs:
               echo "Q06_UNVERIFIED_REVIEW_${name}=PASS"
             else
               echo "Q06_UNVERIFIED_REVIEW_${name}=FAIL"
+              if [ "$name" = "ticket-replay" ]; then
+                grep -Eo 'Q06_PENDING_TICKET_[A-Z_]+' "$LOGDIR/$name.log" | sort -u | head -4 || true
+              fi
               return 1
             fi
           }
