@@ -36,6 +36,15 @@ jobs:
               echo "Q06_UNVERIFIED_REVIEW_${name}=PASS"
             else
               echo "Q06_UNVERIFIED_REVIEW_${name}=FAIL"
+              if [ "$name" = "focused" ]; then
+                if grep -Eq 'error\\[E[0-9]+\\]|^error: could not compile|^error: failed to' "$LOGDIR/$name.log"; then
+                  echo Q06_REVIEW_TICKET_FAIL_CLASS=COMPILATION
+                elif grep -Fq 'test result: FAILED' "$LOGDIR/$name.log"; then
+                  echo Q06_REVIEW_TICKET_FAIL_CLASS=RUST_ASSERTION
+                else
+                  echo Q06_REVIEW_TICKET_FAIL_CLASS=OTHER
+                fi
+              fi
               return 1
             fi
           }
