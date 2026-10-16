@@ -1,4 +1,4 @@
-name: Q06 registration header private rustfmt coordinate-only diagnosis
+name: Q06 review reference exact private rustfmt coordinate-only diagnosis
 on:
   push:
     branches: [build/noerith-q06-task8-dev-seedfile-20261015]
@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
-      TARGET_SHA: 2ec28236d114e1567b761da3cbd5c47b0cc06769
+      TARGET_SHA: 53ed99286cad9c6cab166c2d3c20438db4d4a94c
     steps:
       - uses: actions/checkout@v4
         with:
@@ -31,7 +31,7 @@ jobs:
           rustup toolchain install 1.98.1 --profile minimal --component rustfmt --no-self-update >"${RUNNER_TEMP}/private-rust-install.log" 2>&1
           cd "$ROOT"
           cargo +1.98.1 fmt --manifest-path tools/q06-memory-context-eval/Cargo.toml >"$LOG" 2>&1
-          for FILE in tools/q06-memory-context-eval/src/registered_case_header_dev.rs tools/q06-memory-context-eval/src/validator.rs tools/q06-memory-context-eval/tests/registered_case_header_dev.rs; do
+          for FILE in tools/q06-memory-context-eval/src/review_intake_dev.rs tools/q06-memory-context-eval/tests/review_intake_dev.rs; do
             DIFF="${RUNNER_TEMP}/q06-fmt-$(basename "$FILE")"
             git diff --unified=0 -- "$FILE" >"$DIFF"
             python3 - "$DIFF" "$(basename "$FILE")" <<'PY'
