@@ -1,0 +1,42 @@
+name: Q06 private source 69-family history gaps five Rust assertion mutations
+on:
+  push:
+    branches: [build/noerith-q06-task8-dev-seedfile-20261015]
+    paths: [.github/workflows/noerith-q06-history-gap-five-mutations-20261016.yml]
+permissions:
+  contents: read
+jobs:
+  private-exact-history-mutations:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      TARGET_SHA: 2b119790a84d118c452eb3c8b9b63986aa866295
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: bash tests/test-noerith-relay-contract.sh
+      - name: Ephemeral private source read-only exact checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Five genuine named Rust source assertion mutation kills
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          LOG="${RUNNER_TEMP}/private-q06-history-mutants.log"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --no-self-update >"${RUNNER_TEMP}/rust-private-install.log" 2>&1
+          cd "$ROOT"
+          if ! python3 tools/verify_q06_private_history_readiness_mutants.py >"$LOG" 2>&1; then
+            grep -E '^Q06_HISTORY_GAP_MUTANT_QUALIFICATION=FAIL Q06_HISTORY_GAP_MUTANT_[a-z0-9-]+=(SOURCE_MISMATCH|SURVIVED|WRONG_ASSERTION|COMPILER_FAILURE_NOT_KILL)$' "$LOG" || true
+            echo Q06_HISTORY_GAP_FIVE_MUTANTS=FAIL
+            exit 1
+          fi
+          grep -Fxq 'Q06_HISTORY_GAP_MUTANT_QUALIFICATION=PASS count=5' "$LOG"
+          test "$(grep -Ec '^Q06_HISTORY_GAP_MUTANT_[a-z0-9-]+=KILLED_BY_ASSERTION$' "$LOG")" -eq 5
+          grep -E '^Q06_HISTORY_GAP_MUTANT_[a-z0-9-]+=KILLED_BY_ASSERTION$' "$LOG"
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --exit-code --quiet
+          echo Q06_HISTORY_GAP_FIVE_MUTANTS=PASS
