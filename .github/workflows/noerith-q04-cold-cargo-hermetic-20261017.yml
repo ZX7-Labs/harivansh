@@ -1,0 +1,56 @@
+name: NOERITH Q04 cold isolated offline Cargo exact revision
+on:
+  push:
+    branches: [build/noerith-q04-strict-applicability-verify-20261017]
+    paths: [.github/workflows/noerith-q04-cold-cargo-hermetic-20261017.yml]
+permissions:
+  contents: read
+jobs:
+  exact-q04-cold-source-private:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      TARGET_SHA: ebce5c8adc83913385ed998961c0b6111173318b
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Public source-free relay contract
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Ephemeral exact private read-only source
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: New Cargo home, pinned fetch and offline whole-workspace qualification
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          LOGDIR="$RUNNER_TEMP/q04-cold-private-logs"
+          mkdir -m 700 "$LOGDIR"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          check() {
+            local name="$1"
+            shift
+            if "$@" >"$LOGDIR/$name.log" 2>&1; then
+              echo "Q04_COLD_$name=PASS"
+            else
+              echo "Q04_COLD_$name=FAIL"
+              exit 1
+            fi
+          }
+          check toolchain rustup toolchain install 1.98.1 --profile minimal --component clippy --component rustfmt --no-self-update
+          export RUSTUP_TOOLCHAIN=1.98.1
+          export CARGO_HOME="$RUNNER_TEMP/q04-fresh-cargo-home"
+          export CARGO_TARGET_DIR="$RUNNER_TEMP/q04-fresh-target"
+          mkdir -m 700 "$CARGO_HOME"
+          cd "$ROOT"
+          check pinned-fetch cargo fetch --locked
+          export CARGO_NET_OFFLINE=true
+          check offline-workspace cargo test --locked --offline --workspace
+          check offline-clippy cargo clippy --locked --offline --workspace --all-targets -- -D warnings
+          check exact-rustfmt cargo fmt --all -- --check
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --quiet --exit-code
+          echo Q04_COLD_OFFLINE_EXACT_SOURCE_ALL_GATES=PASS
