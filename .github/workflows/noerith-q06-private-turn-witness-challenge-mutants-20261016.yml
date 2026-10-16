@@ -1,0 +1,42 @@
+name: Q06 exact private event witness challenge seven real Rust assertion mutants
+on:
+  push:
+    branches: [build/noerith-q06-task8-dev-seedfile-20261015]
+    paths: [.github/workflows/noerith-q06-private-turn-witness-challenge-mutants-20261016.yml]
+permissions:
+  contents: read
+jobs:
+  exact-private-source-mutations:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      TARGET_SHA: 85baf3cfe9212a63391dd1f517d9c384e72a89bf
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: bash tests/test-noerith-relay-contract.sh
+      - name: Private exact source ephemeral read-only
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Seven typed source-bound event and case identity assertion kills
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/noerith-private-source"
+          LOG="${RUNNER_TEMP}/private-q06-unattested-turn-mutants.log"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --no-self-update >"${RUNNER_TEMP}/rust-private-install.log" 2>&1
+          cd "$ROOT"
+          if ! python3 tools/verify_q06_dev_unattested_turn_challenge_mutants.py >"$LOG" 2>&1; then
+            grep -E '^Q06_UNATTESTED_MUTANT_QUALIFICATION=FAIL Q06_UNATTESTED_MUTANT_[a-z0-9-]+=(SOURCE_MISMATCH|SURVIVED|WRONG_ASSERTION|COMPILER_FAILURE_NOT_KILL)$' "$LOG" || true
+            echo Q06_UNATTESTED_TURN_SEVEN_MUTANTS_EXACT=FAIL
+            exit 1
+          fi
+          grep -Fxq 'Q06_UNATTESTED_MUTANT_QUALIFICATION=PASS count=7' "$LOG"
+          test "$(grep -Ec '^Q06_UNATTESTED_MUTANT_[a-z0-9-]+=KILLED_BY_ASSERTION$' "$LOG")" -eq 7
+          grep -E '^Q06_UNATTESTED_MUTANT_[a-z0-9-]+=KILLED_BY_ASSERTION$' "$LOG"
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --exit-code --quiet
+          echo Q06_UNATTESTED_TURN_SEVEN_MUTANTS_EXACT=PASS
