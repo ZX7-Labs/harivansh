@@ -1,0 +1,50 @@
+name: WP08 exact private synthetic fairness assertion verification
+on:
+  push:
+    branches: [build/noerith-wp08-private-verify-20261016]
+    paths: [.github/workflows/noerith-wp08-fairness-exact-private-20261016.yml]
+permissions:
+  contents: read
+jobs:
+  exact-private-wp08-synthetic:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      TARGET_SHA: 115528f9699773bf05d9d1823587ed861c18a2bf
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Source-free relay contract
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Ephemeral exact SHA private source
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Exact-head synthetic algorithm checks (never authorization)
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          LOGDIR="$RUNNER_TEMP/wp08-private-output"
+          mkdir -m 700 -p "$LOGDIR"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          cd "$ROOT/experiments/wp08-fairness"
+          check() {
+            local name="$1"
+            shift
+            if "$@" >"$LOGDIR/$name.log" 2>&1; then
+              echo "WP08_SYNTHETIC_$name=PASS"
+            else
+              echo "WP08_SYNTHETIC_$name=FAIL"
+              exit 1
+            fi
+          }
+          check interpreter python3 --version
+          check compile python3 -c "import ast,pathlib;[ast.parse(pathlib.Path(p).read_text()) for p in ['fairness_reference.py','test_fairness_reference.py']]"
+          check assertions python3 -m unittest -q test_fairness_reference.py
+          check import-boundary python3 -c "import ast,pathlib; t=ast.parse(pathlib.Path('fairness_reference.py').read_text()); banned={'subprocess','requests','socket','ctypes','pickle','os','sys','importlib'}; roots={item.name.split('.')[0] for n in ast.walk(t) for item in (n.names if isinstance(n,ast.Import) else []) if getattr(item,'name',None)}; assert not roots&banned"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          git -C "$ROOT" diff --quiet --exit-code
+          echo WP08_PRIVATE_SYNTHETIC_EXACT_SOURCE_GATES=PASS
