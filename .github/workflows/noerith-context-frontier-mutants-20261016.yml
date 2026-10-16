@@ -45,6 +45,13 @@ jobs:
             grep -Fxq 'CONTEXT_FRONTIER_ASSERTION_MUTANTS=PASS count=9' "$LOGDIR/mutants.log"
             echo CONTEXT_DEP_NINE_MUTANTS=PASS
           else
+            python3 - "$LOGDIR/mutants.log" <<'PY'
+          import pathlib,re,sys
+          s=pathlib.Path(sys.argv[1]).read_text(errors='replace')
+          m=re.findall(r'(NOT_KILLED_BY_ASSERTION|MUTATION_NOT_SINGLE_EXACT_MATCH|NO_NAMED_TEST|MISSING_FUNCTION_END):([a-z0-9-]+)',s)
+          result=':'.join(m[-1]) if m else 'UNCLASSIFIED:UNKNOWN'
+          print('CONTEXT_DEP_SAFE_MUTANT_DIAG='+result)
+          PY
             echo CONTEXT_DEP_NINE_MUTANTS=FAIL
             exit 1
           fi
