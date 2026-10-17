@@ -1,0 +1,58 @@
+name: NOERITH Q03 v1 private assertion outcome classification
+on:
+  push:
+    branches: [build/noerith-q03-snapshot-signed-red-20261018]
+    paths: [.github/workflows/noerith-q03-aead-v1-private-red-classify-20261018.yml]
+permissions:
+  contents: read
+jobs:
+  no-source-log-classification:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      TARGET_SHA: efc3994dc24b1ff67e347e91e9816ef376bca2d0
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Source-free privacy controls
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Read-only private exact SHA
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Classify test outcome without private raw logs or identifiers
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          LOG="$RUNNER_TEMP/q03-v1-private-run-output.log"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --no-self-update >"$RUNNER_TEMP/q03-rustup.log" 2>&1
+          export RUSTUP_TOOLCHAIN=1.98.1
+          cd "$ROOT"
+          set +e
+          cargo test --locked -p noerith-storage --test q03_sqlite_epoch_range q03_aead_v1_recovery_rejects_ >"$LOG" 2>&1
+          status=$?
+          set -e
+          python3 - "$LOG" "$status" <<'PY'
+          from pathlib import Path
+          import re, hashlib, sys
+          data=Path(sys.argv[1]).read_text(errors='replace')
+          fail=re.findall(r'^test ([a-zA-Z0-9_:]+) \.\.\. FAILED$', data, re.M)
+          good=re.findall(r'^test ([a-zA-Z0-9_:]+) \.\.\. ok$', data, re.M)
+          err=re.findall(r'^error(?:\[E[0-9]+\])?:', data, re.M)
+          print('Q03_CLASS_PROCESS_STATUS='+str(sys.argv[2]))
+          print('Q03_CLASS_FAILED_TEST_COUNT='+str(len(fail)))
+          print('Q03_CLASS_PASSED_TEST_COUNT='+str(len(good)))
+          print('Q03_CLASS_COMPILE_ERROR_COUNT='+str(len(err)))
+          print('Q03_CLASS_PANIC_COUNT='+str(data.count('panicked at')))
+          print('Q03_CLASS_TEST_RESULT_PRESENT='+str('test result: ' in data))
+          print('Q03_CLASS_ERROR_TYPE_SUMMARY='+str('error: test failed' in data))
+          print('Q03_CLASS_FAILED_NAME_HASH_PREFIXES='+','.join(sorted(hashlib.sha256(x.encode()).hexdigest()[:12] for x in fail)))
+          PY
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --quiet --exit-code
+          echo Q03_CLASS_PRIVATE_IDENTITY=PASS
