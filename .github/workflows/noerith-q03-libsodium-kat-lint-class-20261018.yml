@@ -1,0 +1,52 @@
+name: NOERITH Q03 libsodium independent KAT private lint class
+on:
+  push:
+    branches: [build/noerith-q03-snapshot-signed-red-20261018]
+    paths: [.github/workflows/noerith-q03-libsodium-kat-lint-class-20261018.yml]
+permissions:
+  contents: read
+jobs:
+  exact-private-lint-names-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    env:
+      TARGET_SHA: b70e2dd4f762a938e2fdae2ab55288f5fb0ae05f
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Source-free public contract
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Ephemeral exact private source
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Print Clippy lint category only, no private code or snippets
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          LOG="$RUNNER_TEMP/private-lint.log"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --component clippy --no-self-update >"$RUNNER_TEMP/rustup.log" 2>&1
+          export RUSTUP_TOOLCHAIN=1.98.1
+          cd "$ROOT"
+          set +e
+          cargo clippy --manifest-path research/q03-legacy-v1-auth-probe/Cargo.toml --all-targets -- -D warnings >"$LOG" 2>&1
+          exit_code=$?
+          set -e
+          python3 - "$LOG" "$exit_code" <<'PY'
+          import re,sys
+          from pathlib import Path
+          text=Path(sys.argv[1]).read_text(errors="replace")
+          names=sorted(set(re.findall(r"clippy::([a-z_]+)",text)))
+          codes=sorted(set(re.findall(r"error\[(E[0-9]{4})\]",text)))
+          print("Q03_LIBSODIUM_LINT_EXIT="+str(sys.argv[2]))
+          print("Q03_LIBSODIUM_LINT_NAMES="+(','.join(names) if names else "NONE"))
+          print("Q03_LIBSODIUM_RUSTC_CODES="+(','.join(codes) if codes else "NONE"))
+          PY
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --quiet --exit-code
+          echo Q03_LIBSODIUM_LINT_EXACT_PRIVATE=PASS
