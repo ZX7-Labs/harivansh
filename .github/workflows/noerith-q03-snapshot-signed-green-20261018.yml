@@ -1,0 +1,58 @@
+name: NOERITH Q03 isolated signed snapshot exact GREEN
+on:
+  push:
+    branches: [build/noerith-q03-snapshot-signed-red-20261018]
+    paths: [.github/workflows/noerith-q03-snapshot-signed-green-20261018.yml]
+permissions:
+  contents: read
+jobs:
+  exact-q03-snapshot-green:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      TARGET_SHA: 83e028daa0d6f95ea40b5686156b36f2d1dd990f
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Public source-free privacy contract
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Ephemeral exact private read-only source
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Pinned Rust exact source GREEN and workspace qualification
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          LOGDIR="$RUNNER_TEMP/q03-snapshot-green-private-logs"
+          mkdir -m 700 "$LOGDIR"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          gate() {
+            local name="$1"
+            shift
+            if "$@" >"$LOGDIR/$name.log" 2>&1; then
+              echo "Q03_SNAPSHOT_$name=PASS"
+            else
+              echo "Q03_SNAPSHOT_$name=FAIL"
+              exit 1
+            fi
+          }
+          gate toolchain rustup toolchain install 1.98.1 --profile minimal --component clippy --component rustfmt --no-self-update
+          export RUSTUP_TOOLCHAIN=1.98.1
+          cd "$ROOT"
+          gate focused cargo test --locked -p noerith-storage --test q03_snapshot_signed_metadata_red
+          gate q03_epoch cargo test --locked -p noerith-storage --test q03_sqlite_epoch_range
+          gate q03_storage cargo test --locked -p noerith-storage --test q03_storage
+          gate spec python3 tools/verify_spec.py
+          gate s00_python python3 -m unittest discover -s tools/tests -p 'test_verify_spec*.py' -v
+          gate workspace cargo test --locked --workspace
+          gate clippy cargo clippy --locked --workspace --all-targets -- -D warnings
+          gate fmt cargo fmt --all -- --check
+          gate metadata cargo metadata --locked --format-version 1 --no-deps
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --quiet --exit-code
+          echo Q03_SNAPSHOT_EXACT_PRIVATE_SOURCE_ALL_GATES=PASS
