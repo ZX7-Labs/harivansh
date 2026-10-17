@@ -1,0 +1,88 @@
+name: NOERITH Q03 exact source-free failure classification
+on:
+  push:
+    branches: [build/noerith-q03-snapshot-signed-red-20261018]
+    paths: [.github/workflows/noerith-q03-failure-classification-20261018.yml]
+permissions:
+  contents: read
+jobs:
+  q03-classification:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      TARGET_SHA: 83e028daa0d6f95ea40b5686156b36f2d1dd990f
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Public source-free privacy contract
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Ephemeral exact private read-only source
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Sanitize Q03 Rust failure classes and format coordinates
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          LOGDIR="$RUNNER_TEMP/q03-private-classification"
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          mkdir -m 700 "$LOGDIR"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --component clippy --component rustfmt --no-self-update >"$LOGDIR/toolchain.log" 2>&1
+          export RUSTUP_TOOLCHAIN=1.98.1
+          cd "$ROOT"
+          cargo test --locked -p noerith-storage --test q03_sqlite_epoch_range q03_lineage_rejects_corrupt_nonpositive_parent_version -- --exact --nocapture >"$LOGDIR/lineage.log" 2>&1 || true
+          cargo clippy --locked --workspace --all-targets --message-format=json -- -D warnings >"$LOGDIR/clippy.jsonl" 2>&1 || true
+          cargo fmt --all -- --check >"$LOGDIR/format.log" 2>&1 || true
+          cargo fmt --all >"$LOGDIR/reformat.log" 2>&1
+          git diff --numstat >"$LOGDIR/format-numstat.log"
+          python3 - "$LOGDIR" <<'PY'
+          import json
+          import pathlib
+          import re
+          import sys
+          root = pathlib.Path(sys.argv[1])
+          lineage = (root/"lineage.log").read_text(errors="replace")
+          src_lines = re.findall(r"q03_sqlite_epoch_range\.rs:(\d+):(\d+)", lineage)
+          print("Q03_LINEAGE_FAIL_COORDS="+",".join(":".join(x) for x in src_lines[:6]))
+          if "FOREIGN KEY constraint failed" in lineage or "ForeignKey" in lineage:
+              category = "FOREIGN_KEY_MUTATION_NOT_ADMITTED"
+          elif "SqliteFailure" in lineage or "ConstraintViolation" in lineage:
+              category = "SQLITE_FIXTURE_MUTATION_ERROR"
+          elif "corrupt parent version must not masquerade" in lineage:
+              category = "ASSERTION_REJECTED_OR_WRONG_VARIANT"
+          else:
+              category = "OTHER_OR_UNKNOWN"
+          print("Q03_LINEAGE_FAIL_CLASS="+category)
+          messages=[]
+          for line in (root/"clippy.jsonl").read_text(errors="replace").splitlines():
+              try:
+                  item=json.loads(line)
+              except (ValueError,TypeError):
+                  continue
+              if item.get("reason")!="compiler-message":
+                  continue
+              msg=item["message"]
+              if msg.get("level") not in ("error","warning"):
+                  continue
+              code=(msg.get("code") or {}).get("code") or "NO_MACHINE_CODE"
+              spans=msg.get("spans") or []
+              primary=next((s for s in spans if s.get("is_primary")),spans[0] if spans else {})
+              messages.append((msg["level"],code,primary.get("line_start",0)))
+          for level,code,line in messages[:30]:
+              print(f"Q03_CLIPPY_CLASS={level}:{code}:{line}")
+          print("Q03_CLIPPY_CLASS_COUNT="+str(len(messages)))
+          fmt=(root/"format.log").read_text(errors="replace")
+          coords=re.findall(r"^Diff in ([^\n]+):(\d+):", fmt, re.M)
+          for filepath,linenumber in coords[:30]:
+              print(f"Q03_FORMAT_HUNK={pathlib.Path(filepath).name}:{linenumber}")
+          print("Q03_FORMAT_HUNK_COUNT="+str(len(coords)))
+          for line in (root/"format-numstat.log").read_text().splitlines()[:40]:
+              parts=line.split("\t")
+              if len(parts)==3:
+                  print(f"Q03_FORMAT_COUNTS={parts[2]}:+{parts[0]}:-{parts[1]}")
+          PY
+          echo Q03_SOURCE_FREE_CLASSIFICATION=COMPLETE
