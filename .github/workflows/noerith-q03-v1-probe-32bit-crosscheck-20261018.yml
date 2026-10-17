@@ -1,0 +1,58 @@
+name: NOERITH Q03 original-v1 probe 32-bit cross-compile boundaries
+on:
+  push:
+    branches: [build/noerith-q03-snapshot-signed-red-20261018]
+    paths: [.github/workflows/noerith-q03-v1-probe-32bit-crosscheck-20261018.yml]
+permissions:
+  contents: read
+jobs:
+  isolated-32-bit-crosscheck:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 85
+    env:
+      TARGET_SHA: 42354ce73ef1bb224152376a63379dc063279fd9
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Public source-free privacy contract
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Read-only private exact-source checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Explicit 32-bit i686 and Android ARMv7 compile checks only
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          LOGDIR="$RUNNER_TEMP/q03-private-32bit-logs"
+          mkdir -m 700 "$LOGDIR"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          gate() {
+            local name="$1"; shift
+            if "$@" >"$LOGDIR/$name.log" 2>&1; then
+              echo "Q03_CROSS32_$name=PASS"
+            else
+              echo "Q03_CROSS32_$name=FAIL"
+              exit 1
+            fi
+          }
+          gate toolchain rustup toolchain install 1.98.1 --profile minimal --no-self-update
+          export RUSTUP_TOOLCHAIN=1.98.1
+          gate targets rustup target add i686-unknown-linux-gnu armv7-linux-androideabi
+          export CARGO_HOME="$RUNNER_TEMP/q03-32bit-cargo-home"
+          export CARGO_TARGET_DIR="$RUNNER_TEMP/q03-32bit-cargo-target"
+          mkdir -m 700 "$CARGO_HOME"
+          cd "$ROOT"
+          M="research/q03-legacy-v1-auth-probe/Cargo.toml"
+          gate i686_lib cargo check --manifest-path "$M" --target i686-unknown-linux-gnu --lib
+          gate i686_tests cargo check --manifest-path "$M" --target i686-unknown-linux-gnu --tests
+          gate android_armv7_lib cargo check --manifest-path "$M" --target armv7-linux-androideabi --lib
+          gate android_armv7_tests cargo check --manifest-path "$M" --target armv7-linux-androideabi --tests
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --quiet --exit-code
+          echo Q03_CROSS32_EXACT_PRIVATE_SHA=PASS
+          echo Q03_CROSS32_SCOPE=COMPILE_ONLY_NO_DEVICE_RUNTIME_BATTERY_OR_MEMORY_PROOF
