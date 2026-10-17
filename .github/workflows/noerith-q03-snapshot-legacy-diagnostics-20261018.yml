@@ -1,0 +1,61 @@
+name: NOERITH Q03 private legacy diagnostic classification
+on:
+  push:
+    branches: [build/noerith-q03-snapshot-signed-red-20261018]
+    paths: [.github/workflows/noerith-q03-snapshot-legacy-diagnostics-20261018.yml]
+permissions:
+  contents: read
+jobs:
+  q03-legacy-exact-private:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 70
+    env:
+      TARGET_SHA: 83e028daa0d6f95ea40b5686156b36f2d1dd990f
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Source-free relay policy
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Exact private detached read-only checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Diagnose legacy test names as SHA-256 only, never emit source or raw logs
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          LOG="$RUNNER_TEMP/private-q03-legacy-output.log"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --no-self-update >"$RUNNER_TEMP/private-rustup.log" 2>&1
+          export RUSTUP_TOOLCHAIN=1.98.1
+          cd "$ROOT"
+          set +e
+          cargo test --locked -p noerith-storage --test q03_sqlite_epoch_range >"$LOG" 2>&1
+          status=$?
+          set -e
+          python3 - "$LOG" "$status" <<'PY'
+          import hashlib, re, sys
+          from pathlib import Path
+          data=Path(sys.argv[1]).read_text(errors="replace")
+          status=int(sys.argv[2])
+          fails=re.findall(r"^test ([A-Za-z0-9_:]+) \.\.\. FAILED\s*$", data, re.M)
+          successes=re.findall(r"^test ([A-Za-z0-9_:]+) \.\.\. ok\s*$", data, re.M)
+          summaries=re.findall(r"test result: (FAILED|ok)\. ([^\n]+)", data)
+          def digest(s): return hashlib.sha256(s.encode()).hexdigest()[:20]
+          print("Q03_LEGACY_PROCESS_STATUS="+str(status))
+          print("Q03_LEGACY_ASSERTION_FAILURE_COUNT="+str(len(fails)))
+          print("Q03_LEGACY_SUCCEEDED_COUNT="+str(len(successes)))
+          print("Q03_LEGACY_ASSERTION_NAME_SHA256_PREFIXES="+",".join(sorted(digest(s) for s in fails)))
+          print("Q03_LEGACY_SUMMARY_PRESENT="+str(bool(summaries)).lower())
+          print("Q03_LEGACY_PANIC_PRESENT="+str("panicked at" in data).lower())
+          print("Q03_LEGACY_COMPILE_ERROR_PRESENT="+str(bool(re.search(r"^error(?:\[E[0-9]+\])?:",data,re.M))).lower())
+          print("Q03_LEGACY_TOOLCHAIN_SOURCE_LOCK=1.98.1")
+          PY
+          rm -f "$LOG"
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --quiet --exit-code
+          echo Q03_LEGACY_PRIVATE_SHA_IDENTITY=PASS
