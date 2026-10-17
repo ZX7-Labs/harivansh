@@ -1,0 +1,56 @@
+name: NOERITH Q03 private research rustfmt encrypted patch
+on:
+  push:
+    branches: [build/noerith-q03-snapshot-signed-red-20261018]
+    paths: [.github/workflows/noerith-q03-v1-probe-encrypted-rustfmt-20261018.yml]
+permissions:
+  contents: read
+jobs:
+  sourcefree-encrypted-rustfmt:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      TARGET_SHA: 58e62e7e4434ba863d36f3e5d4a485534a84efe0
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Public source-free privacy contract
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Exact ephemeral private read-only checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Format exact private prototype and encrypt all changed source bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          PATCH="$RUNNER_TEMP/q03-private-research-rustfmt.patch"
+          SEALED="$RUNNER_TEMP/q03-private-research-rustfmt.cms"
+          CERT="$GITHUB_WORKSPACE/certs/noerith-q03-research-ephemeral-rustfmt-20261018.pem"
+          openssl x509 -in "$CERT" -noout >"$RUNNER_TEMP/q03-cert-check.log" 2>&1
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --component rustfmt --no-self-update >"$RUNNER_TEMP/q03-rustup.log" 2>&1
+          export RUSTUP_TOOLCHAIN=1.98.1
+          cd "$ROOT"
+          cargo fmt --manifest-path research/q03-legacy-v1-auth-probe/Cargo.toml >"$RUNNER_TEMP/private-fmt.log" 2>&1
+          cargo fmt --manifest-path research/q03-legacy-v1-auth-probe/Cargo.toml -- --check >"$RUNNER_TEMP/private-fmt-check.log" 2>&1
+          git diff --binary -- research/q03-legacy-v1-auth-probe/src/lib.rs >"$PATCH"
+          test -s "$PATCH"
+          patch_digest="$(sha256sum "$PATCH" | cut -d' ' -f1)"
+          patch_size="$(wc -c <"$PATCH")"
+          openssl cms -encrypt -binary -aes256 -outform DER -in "$PATCH" -out "$SEALED" "$CERT" >"$RUNNER_TEMP/q03-private-cms.log" 2>&1
+          test -s "$SEALED"
+          rm -f "$PATCH" "$RUNNER_TEMP/private-fmt.log" "$RUNNER_TEMP/private-fmt-check.log"
+          echo "Q03_PROBE_ENCRYPTED_PATCH_SHA256=$patch_digest"
+          echo "Q03_PROBE_ENCRYPTED_PATCH_BYTES=$patch_size"
+          echo Q03_PROBE_RUSTFMT_CIPHERTEXT_ONLY=PASS
+      - name: Upload ciphertext only for temporary private receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: q03-private-research-rustfmt-cms-only
+          path: ${{ runner.temp }}/q03-private-research-rustfmt.cms
+          retention-days: 1
+          if-no-files-found: error
