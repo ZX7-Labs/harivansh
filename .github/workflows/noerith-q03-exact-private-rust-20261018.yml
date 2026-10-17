@@ -43,6 +43,22 @@ jobs:
                 echo "Q03_DIAG_$label=RUST_COMPILATION"
               elif grep -Fq 'test result: FAILED' "$LOGDIR/$label.log"; then
                 echo "Q03_DIAG_$label=TEST_ASSERTION"
+                if test "$label" = signed-epoch-and-custody; then
+                  Q03_PRIVATE_LOG="$LOGDIR/$label.log" Q03_PRIVATE_SOURCE="$ROOT/crates/noerith-storage/tests/q03_sqlite_epoch_range.rs" python3 - <<'PY'
+          import os
+          from pathlib import Path
+          import re
+          source = Path(os.environ["Q03_PRIVATE_SOURCE"]).read_text(encoding="utf-8")
+          log = Path(os.environ["Q03_PRIVATE_LOG"]).read_text(encoding="utf-8", errors="replace")
+          declared = re.findall(r"(?m)^#\\[test\\]\\s*\\nfn\\s+([A-Za-z0-9_]+)\\(", source)
+          failures = re.findall(r"(?m)^test ([A-Za-z0-9_]+) \\.\\.\\. FAILED$", log)
+          positions = [declared.index(name) + 1 for name in failures if name in declared]
+          print("Q03_DIAG_DECLARED_TESTS=" + str(len(declared)))
+          print("Q03_DIAG_FAILED_ASSERTION_COUNT=" + str(len(failures)))
+          print("Q03_DIAG_FAILED_TEST_ORDINALS=" + ",".join(map(str, sorted(positions))))
+          print("Q03_DIAG_MAPPED_FAILURES=" + str(len(positions)))
+          PY
+                fi
               elif grep -Eq 'failed to download|failed to select a version|failed to get|failed to load source|checksum failed|lock file' "$LOGDIR/$label.log"; then
                 echo "Q03_DIAG_$label=DEPENDENCY_OR_LOCK"
               elif grep -Eq 'panicked|SIGSEGV|signal: [0-9]+|timed out' "$LOGDIR/$label.log"; then
