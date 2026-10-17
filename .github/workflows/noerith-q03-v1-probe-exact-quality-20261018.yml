@@ -1,0 +1,57 @@
+name: NOERITH Q03 exact private research AEAD probe qualification
+on:
+  push:
+    branches: [build/noerith-q03-snapshot-signed-red-20261018]
+    paths: [.github/workflows/noerith-q03-v1-probe-exact-quality-20261018.yml]
+permissions:
+  contents: read
+jobs:
+  isolated-v1-probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    env:
+      TARGET_SHA: 30cfdfe6fe7711dc88ee8bf88d1da890a4760766
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Source-free privacy controls
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Exact ephemeral private read-only source
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Verify pinned Rust research tests Rustfmt and strict lint
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          LOGDIR="$RUNNER_TEMP/q03-v1-research-qual-private-logs"
+          mkdir -m 700 "$LOGDIR"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          gate() {
+            local name="$1"
+            shift
+            if "$@" >"$LOGDIR/$name.log" 2>&1; then
+              echo "Q03_RESEARCH_$name=PASS"
+            else
+              echo "Q03_RESEARCH_$name=FAIL"
+              exit 1
+            fi
+          }
+          gate toolchain rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy --no-self-update
+          export RUSTUP_TOOLCHAIN=1.98.1
+          export CARGO_HOME="$RUNNER_TEMP/q03-research-cargo-home"
+          export CARGO_TARGET_DIR="$RUNNER_TEMP/q03-research-cargo-target"
+          mkdir -m 700 "$CARGO_HOME"
+          cd "$ROOT"
+          M="research/q03-legacy-v1-auth-probe/Cargo.toml"
+          gate rustfmt cargo fmt --manifest-path "$M" -- --check
+          gate differential cargo test --manifest-path "$M"
+          gate strict_clippy cargo clippy --manifest-path "$M" --all-targets -- -D warnings
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --quiet --exit-code
+          echo Q03_RESEARCH_EXACT_PRIVATE_SHA=PASS
+          echo Q03_RESEARCH_NOT_PRODUCTION_CRYPTO=TRUE
