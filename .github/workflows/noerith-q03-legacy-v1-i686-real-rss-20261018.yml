@@ -1,0 +1,112 @@
+name: NOERITH Q03 isolated real 32bit v1 AEAD RSS test
+on:
+  push:
+    branches: [build/noerith-q03-snapshot-signed-red-20261018]
+    paths: [.github/workflows/noerith-q03-legacy-v1-i686-real-rss-20261018.yml]
+permissions:
+  contents: read
+jobs:
+  real-32bit-runtime-research:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      TARGET_SHA: 99c34c3e53c7369e42eaac52a3ab30d5d9da3040
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Public source-free relay contract
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Exact ephemeral private read-only source
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Actual i686 runtime, 64MiB authentic fixture, capped-RAM verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          LOGDIR="$RUNNER_TEMP/q03-private-i686-physical-rss"
+          mkdir -m 700 "$LOGDIR"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          gate() {
+            local name="$1"; shift
+            if "$@" >"$LOGDIR/$name.log" 2>&1; then
+              echo "Q03_I686_RSS_$name=PASS"
+            else
+              echo "Q03_I686_RSS_$name=FAIL"
+              exit 1
+            fi
+          }
+          gate toolchain rustup toolchain install 1.98.1 --profile minimal --component rustfmt --no-self-update
+          export RUSTUP_TOOLCHAIN=1.98.1
+          gate target rustup target add i686-unknown-linux-gnu
+          # A real 32-bit ELF must be linked/executed, not just cargo checked.
+          if ! printf 'int main(void){return 0;}\n' | gcc -m32 -x c - -o "$LOGDIR/test-32bit-loader" >"$LOGDIR/linker-probe.log" 2>&1; then
+            gate install_multilib sudo apt-get update -qq
+            gate install_32bit_linker sudo apt-get install -y -qq gcc-multilib libc6-dev-i386
+          fi
+          gate loader "$LOGDIR/test-32bit-loader"
+          export CARGO_HOME="$RUNNER_TEMP/q03-i686-rss-cargo-home"
+          export CARGO_TARGET_DIR="$RUNNER_TEMP/q03-i686-rss-target"
+          mkdir -m 700 "$CARGO_HOME"
+          cd "$ROOT"
+          M="research/q03-legacy-v1-auth-probe/Cargo.toml"
+          gate build_amd64 cargo build --manifest-path "$M" --release --bin q03_v1_runtime_memory
+          gate build_i686 cargo build --manifest-path "$M" --release --target i686-unknown-linux-gnu --bin q03_v1_runtime_memory
+          NATIVE="$CARGO_TARGET_DIR/release/q03_v1_runtime_memory"
+          I686="$CARGO_TARGET_DIR/i686-unknown-linux-gnu/release/q03_v1_runtime_memory"
+          gate binary_i686_identified file "$I686"
+          fixture_small="$LOGDIR/synthetic-small-v1.blob"
+          fixture_large="$LOGDIR/synthetic-large-v1.blob"
+          gate reference_1m "$NATIVE" generate "$fixture_small" 1048576
+          gate reference_64m "$NATIVE" generate "$fixture_large" 67108864
+          test "$(stat -c '%s' "$fixture_large")" -eq 67108909
+          # Each process gets less virtual memory than the 64MiB original
+          # encrypted file + runtime+libs could accommodate if copied whole.
+          for label in small large; do
+            if [ "$label" = small ]; then file="$fixture_small"; else file="$fixture_large"; fi
+            if /usr/bin/time -f '%M' -o "$LOGDIR/${label}.rss" prlimit --as=100663296 -- "$I686" verify "$file" >"$LOGDIR/${label}.verify.log" 2>&1; then
+              grep -Fxq 'Q03_BOUNDED_V1_READER_AUTHENTICITY=PASS' "$LOGDIR/${label}.verify.log"
+              echo "Q03_I686_RSS_AUTHENTIC_${label}=PASS"
+            else
+              echo "Q03_I686_RSS_AUTHENTIC_${label}=FAIL"
+              exit 1
+            fi
+          done
+          # A trusted encrypted fixture modified without updating tag cannot pass.
+          cp "$fixture_small" "$LOGDIR/modified-v1.blob"
+          python3 - "$LOGDIR/modified-v1.blob" <<'PY'
+          from pathlib import Path
+          import sys
+          p=Path(sys.argv[1])
+          with p.open("r+b") as f:
+              f.seek(-1,2)
+              b=f.read(1)
+              f.seek(-1,2)
+              f.write(bytes([b[0]^1]))
+          PY
+          if prlimit --as=100663296 -- "$I686" verify "$LOGDIR/modified-v1.blob" >"$LOGDIR/negative.log" 2>&1; then
+            echo Q03_I686_RSS_TAMPER=UNEXPECTED_GREEN
+            exit 1
+          fi
+          echo Q03_I686_RSS_TAMPER=REJECTED
+          python3 - "$LOGDIR/small.rss" "$LOGDIR/large.rss" <<'PY'
+          import sys
+          from pathlib import Path
+          small=int(Path(sys.argv[1]).read_text().strip())
+          large=int(Path(sys.argv[2]).read_text().strip())
+          print("Q03_I686_RSS_1M_PEAK_KIB="+str(small))
+          print("Q03_I686_RSS_64M_PEAK_KIB="+str(large))
+          print("Q03_I686_RSS_DIFFERENCE_KIB="+str(large-small))
+          if not (0<small<=49152 and 0<large<=49152 and large-small<=8192):
+              print("Q03_I686_RSS_BOUNDED=NOT_QUALIFIED")
+              sys.exit(1)
+          print("Q03_I686_RSS_BOUNDED=PASS")
+          PY
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --quiet --exit-code
+          echo Q03_I686_RSS_EXACT_PRIVATE_SHA=PASS
+          echo Q03_I686_RSS_SCOPE=HOSTED_32BIT_LINUX_RESEARCH_NOT_ANDROID_DEVICE_OR_PRODUCTION
