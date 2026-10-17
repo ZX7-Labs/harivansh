@@ -1,0 +1,77 @@
+name: NOERITH Q03 v1 exact semantic RED attestation
+on:
+  push:
+    branches: [build/noerith-q03-snapshot-signed-red-20261018]
+    paths: [.github/workflows/noerith-q03-aead-v1-strict-red-attestation-20261018.yml]
+permissions:
+  contents: read
+jobs:
+  q03-v1-exact-semantic-red:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      TARGET_SHA: efc3994dc24b1ff67e347e91e9816ef376bca2d0
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Source-free privacy contract
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Ephemeral exact private read-only checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Qualify exactly three semantic assertion failures
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          LOG="$RUNNER_TEMP/q03-aead-v1-private-test.log"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          if ! rustup toolchain install 1.98.1 --profile minimal --no-self-update >"$RUNNER_TEMP/q03-toolchain-private.log" 2>&1; then
+            echo Q03_V1_RED=PINNED_TOOLCHAIN_UNAVAILABLE
+            exit 1
+          fi
+          export RUSTUP_TOOLCHAIN=1.98.1
+          cd "$ROOT"
+          set +e
+          cargo test --locked -p noerith-storage --test q03_sqlite_epoch_range q03_aead_v1_recovery_rejects_ >"$LOG" 2>&1
+          status=$?
+          set -e
+          python3 - "$LOG" "$status" <<'PY'
+          import re, sys
+          from pathlib import Path
+          data = Path(sys.argv[1]).read_text(errors="replace")
+          expected = (
+            "q03_aead_v1_recovery_rejects_modified_tag_with_matching_forged_digest",
+            "q03_aead_v1_recovery_rejects_modified_nonce_with_matching_forged_digest",
+            "q03_aead_v1_recovery_rejects_modified_ciphertext_with_matching_forged_digest",
+          )
+          failed = re.findall(r"^test ([A-Za-z0-9_]+) \.\.\. FAILED$", data, re.M)
+          passed = re.findall(r"^test ([A-Za-z0-9_]+) \.\.\. ok$", data, re.M)
+          summary = re.search(r"^test result: FAILED\. 0 passed; 3 failed; 0 ignored; 0 measured; [0-9]+ filtered out;", data, re.M)
+          markers = data.count("Q03_RECOVERY_AEAD_V1_AUTHENTICATION_REQUIRED:")
+          compile_error = bool(re.search(r"^error\[E[0-9]{4}\]:|^error: could not compile |^error: aborting due to", data, re.M))
+          qualified = (
+            sys.argv[2] == "101"
+            and sorted(failed) == sorted(expected)
+            and not passed
+            and summary is not None
+            and markers == 3
+            and data.count("panicked at") == 3
+            and not compile_error
+          )
+          if not qualified:
+            print("Q03_V1_AEAD_SEMANTIC_RED=UNQUALIFIED")
+            print("Q03_V1_AEAD_FAIL_COUNT="+str(len(failed)))
+            print("Q03_V1_AEAD_EXPECTED_ASSERTION_COUNT="+str(markers))
+            print("Q03_V1_AEAD_COMPILE_ERROR="+str(compile_error))
+            sys.exit(1)
+          print("Q03_V1_AEAD_SEMANTIC_RED=OBSERVED_THREE")
+          print("Q03_V1_AEAD_REAL_TESTS_FAILED=3")
+          PY
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --quiet --exit-code
+          echo Q03_V1_AEAD_EXACT_PRIVATE_SOURCE=PASS
