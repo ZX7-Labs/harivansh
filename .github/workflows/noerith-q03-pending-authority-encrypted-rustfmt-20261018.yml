@@ -1,0 +1,55 @@
+name: NOERITH Q03 pending authority exact private Rustfmt ciphertext
+on:
+  push:
+    branches: [build/noerith-q03-snapshot-signed-red-20261018]
+    paths: [.github/workflows/noerith-q03-pending-authority-encrypted-rustfmt-20261018.yml]
+permissions:
+  contents: read
+jobs:
+  encrypted-format-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      TARGET_SHA: decc05b7b3149678e1f0104fc971eb740fed6713
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Source-free relay policy
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Ephemeral exact private read-only checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Generate and encrypt exact pinned format patch before artifact upload
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          PATCH="$RUNNER_TEMP/q03-pending-private-rustfmt.patch"
+          SEALED="$RUNNER_TEMP/q03-pending-private-rustfmt.cms"
+          CERT="$GITHUB_WORKSPACE/certs/noerith-q03-pending-authority-ephemeral-format-20261018.pem"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          openssl x509 -in "$CERT" -noout >"$RUNNER_TEMP/cert-check-private.log" 2>&1
+          rustup toolchain install 1.98.1 --profile minimal --component rustfmt --no-self-update >"$RUNNER_TEMP/rustup-private.log" 2>&1
+          export RUSTUP_TOOLCHAIN=1.98.1
+          cd "$ROOT"
+          cargo fmt --all >"$RUNNER_TEMP/format-private.log" 2>&1
+          cargo fmt --all -- --check >"$RUNNER_TEMP/format-check-private.log" 2>&1
+          git diff --binary -- crates/noerith-storage/src/frontier.rs crates/noerith-storage/tests/q03_pending_authority_red.rs >"$PATCH"
+          test -s "$PATCH"
+          test "$(git diff --name-only | wc -l)" -eq 2
+          echo "Q03_PENDING_FMT_PATCH_SHA256=$(sha256sum "$PATCH" | cut -d' ' -f1)"
+          echo "Q03_PENDING_FMT_PATCH_BYTES=$(wc -c <"$PATCH")"
+          openssl cms -encrypt -binary -aes256 -outform DER -in "$PATCH" -out "$SEALED" "$CERT" >"$RUNNER_TEMP/cms-private.log" 2>&1
+          test -s "$SEALED"
+          rm -f "$PATCH" "$RUNNER_TEMP/format-private.log" "$RUNNER_TEMP/format-check-private.log"
+          echo Q03_PENDING_FMT_CIPHERTEXT_ONLY=PASS
+      - name: Upload ephemeral ciphertext only
+        uses: actions/upload-artifact@v4
+        with:
+          name: q03-pending-private-rustfmt-encrypted
+          path: ${{ runner.temp }}/q03-pending-private-rustfmt.cms
+          retention-days: 1
+          if-no-files-found: error
