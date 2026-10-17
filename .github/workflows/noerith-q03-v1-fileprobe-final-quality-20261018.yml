@@ -1,0 +1,57 @@
+name: NOERITH Q03 exact seekable-file research final quality gates
+on:
+  push:
+    branches: [build/noerith-q03-snapshot-signed-red-20261018]
+    paths: [.github/workflows/noerith-q03-v1-fileprobe-final-quality-20261018.yml]
+permissions:
+  contents: read
+jobs:
+  exact-fileprobe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    env:
+      TARGET_SHA: 8410dd9b2227061c15659ed93bb2fdd3a531b1ae
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Public privacy control
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Ephemeral exact read-only private source
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Pinned Rust formatter, differential file-reader tests and strict lint
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          LOGDIR="$RUNNER_TEMP/q03-fileprobe-final-private-logs"
+          mkdir -m 700 "$LOGDIR"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          gate() {
+            local name="$1"
+            shift
+            if "$@" >"$LOGDIR/$name.log" 2>&1; then
+              echo "Q03_FILEPROBE_FINAL_$name=PASS"
+            else
+              echo "Q03_FILEPROBE_FINAL_$name=FAIL"
+              exit 1
+            fi
+          }
+          gate toolchain rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy --no-self-update
+          export RUSTUP_TOOLCHAIN=1.98.1
+          export CARGO_HOME="$RUNNER_TEMP/q03-fileprobe-final-home"
+          export CARGO_TARGET_DIR="$RUNNER_TEMP/q03-fileprobe-final-target"
+          mkdir -m 700 "$CARGO_HOME"
+          cd "$ROOT"
+          M="research/q03-legacy-v1-auth-probe/Cargo.toml"
+          gate rustfmt cargo fmt --manifest-path "$M" -- --check
+          gate differential cargo test --manifest-path "$M"
+          gate clippy cargo clippy --manifest-path "$M" --all-targets -- -D warnings
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --quiet --exit-code
+          echo Q03_FILEPROBE_FINAL_EXACT_PRIVATE_SOURCE=PASS
+          echo Q03_FILEPROBE_FINAL_SCOPE=ISOLATED_RESEARCH_NOT_ACCEPTED_PRODUCTION
