@@ -1,0 +1,68 @@
+name: NOERITH Q03 private v1 seekable file authentication research
+on:
+  push:
+    branches: [build/noerith-q03-snapshot-signed-red-20261018]
+    paths: [.github/workflows/noerith-q03-v1-fileprobe-exact-tests-20261018.yml]
+permissions:
+  contents: read
+jobs:
+  private-fileprobe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    env:
+      TARGET_SHA: 83498a5a0bea84bd38c48f50c2ad4e7b9cdc033a
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Source-free public privacy contract
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Ephemeral private read-only exact source
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Execute fixed-scratch seekable-file differential tests privately
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          LOGDIR="$RUNNER_TEMP/q03-fileprobe-private-logs"
+          mkdir -m 700 "$LOGDIR"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy --no-self-update >"$LOGDIR/rustup.log" 2>&1
+          export RUSTUP_TOOLCHAIN=1.98.1
+          export CARGO_HOME="$RUNNER_TEMP/q03-fileprobe-cargo-home"
+          export CARGO_TARGET_DIR="$RUNNER_TEMP/q03-fileprobe-target"
+          mkdir -m 700 "$CARGO_HOME"
+          cd "$ROOT"
+          M="research/q03-legacy-v1-auth-probe/Cargo.toml"
+          if cargo test --manifest-path "$M" >"$LOGDIR/tests.log" 2>&1; then
+            echo Q03_FILEPROBE_DIFFERENTIAL_TESTS=PASS
+          else
+            python3 - "$LOGDIR/tests.log" <<'PY'
+          import sys,re
+          from pathlib import Path
+          d=Path(sys.argv[1]).read_text(errors="replace")
+          print("Q03_FILEPROBE_DIFFERENTIAL_TESTS=FAIL")
+          print("Q03_FILEPROBE_COMPILER_ERRORS="+str(len(re.findall(r"^error\\[E[0-9]+\\]:", d, re.M))))
+          print("Q03_FILEPROBE_TEST_FAILURES="+str(len(re.findall(r"^test [A-Za-z0-9_]+ \\\.\\\.\\\. FAILED$",d,re.M))))
+          print("Q03_FILEPROBE_PANICS="+str(d.count("panicked at")))
+          PY
+            exit 1
+          fi
+          if cargo fmt --manifest-path "$M" -- --check >"$LOGDIR/fmt.log" 2>&1; then
+            echo Q03_FILEPROBE_RUSTFMT=PASS
+          else
+            echo Q03_FILEPROBE_RUSTFMT=NOT_QUALIFIED
+          fi
+          if cargo clippy --manifest-path "$M" --all-targets -- -D warnings >"$LOGDIR/clippy.log" 2>&1; then
+            echo Q03_FILEPROBE_STRICT_CLIPPY=PASS
+          else
+            echo Q03_FILEPROBE_STRICT_CLIPPY=NOT_QUALIFIED
+          fi
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --quiet --exit-code
+          echo Q03_FILEPROBE_PRIVATE_IDENTITY=PASS
+          echo Q03_FILEPROBE_RESEARCH_NOT_PRODUCTION=TRUE
