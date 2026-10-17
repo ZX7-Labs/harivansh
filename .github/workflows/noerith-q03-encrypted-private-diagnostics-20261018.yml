@@ -1,0 +1,77 @@
+name: NOERITH Q03 encrypted local-only exact failure diagnostics
+on:
+  push:
+    branches: [build/noerith-q03-snapshot-signed-red-20261018]
+    paths: [.github/workflows/noerith-q03-encrypted-private-diagnostics-20261018.yml]
+permissions:
+  contents: read
+jobs:
+  encrypted-q03-diagnostics:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      TARGET_SHA: 83e028daa0d6f95ea40b5686156b36f2d1dd990f
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Public source-free privacy contract
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Ephemeral exact private read-only source
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Capture diagnostics encrypted to local-only recipient
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          DIAG="$RUNNER_TEMP/q03-private-diag"
+          mkdir -m 700 "$DIAG"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --component clippy --component rustfmt --no-self-update >"$DIAG/toolchain.log" 2>&1
+          export RUSTUP_TOOLCHAIN=1.98.1
+          cd "$ROOT"
+          if cargo test --locked -p noerith-storage --test q03_sqlite_epoch_range q03_lineage_rejects_corrupt_nonpositive_parent_version -- --exact --nocapture >"$DIAG/lineage.log" 2>&1; then
+            lineage=PASS
+          else
+            lineage=FAIL
+          fi
+          if cargo clippy --locked --workspace --all-targets -- -D warnings >"$DIAG/clippy.log" 2>&1; then
+            clippy=PASS
+          else
+            clippy=FAIL
+          fi
+          if cargo fmt --all -- --check >"$DIAG/fmt-check.log" 2>&1; then
+            fmt=PASS
+          else
+            fmt=FAIL
+          fi
+          cargo fmt --all >"$DIAG/fmt-run.log" 2>&1
+          git diff -- crates/noerith-storage/src/engine.rs >"$DIAG/engine-fmt.patch"
+          git diff --stat >"$DIAG/fmt-stat.log"
+          {
+            printf 'NOERITH_Q03_DIAG_SHA=%s\n' "$TARGET_SHA"
+            printf 'LINEAGE=%s CLIPPY=%s FMT=%s\n' "$lineage" "$clippy" "$fmt"
+            printf '\n===== LINEAGE LOG =====\n'
+            head -c 16000 "$DIAG/lineage.log"
+            printf '\n===== CLIPPY LOG =====\n'
+            head -c 18000 "$DIAG/clippy.log"
+            printf '\n===== FORMAT LOG =====\n'
+            head -c 18000 "$DIAG/fmt-check.log"
+            printf '\n===== ENGINE RUSTFMT PATCH =====\n'
+            head -c 14000 "$DIAG/engine-fmt.patch"
+            printf '\n===== FORMAT STAT =====\n'
+            head -c 4000 "$DIAG/fmt-stat.log"
+          } >"$DIAG/private-report.txt"
+          gzip -n -c "$DIAG/private-report.txt" >"$DIAG/private-report.gz"
+          openssl cms -encrypt -binary -aes256 -in "$DIAG/private-report.gz" -recip "$GITHUB_WORKSPACE/certs/q03-local-only-encrypted-diagnostics-20261018.pem" -outform DER -out "$DIAG/private-report.cms"
+          test -s "$DIAG/private-report.cms"
+          echo Q03_ENCRYPTED_PRIVATE_DIAG_BEGIN
+          base64 -w0 "$DIAG/private-report.cms"
+          echo
+          echo Q03_ENCRYPTED_PRIVATE_DIAG_END
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          echo Q03_PRIVATE_DIAG_CIPHERTEXT_ONLY=SUCCESS
