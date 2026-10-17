@@ -1,0 +1,73 @@
+name: NOERITH Q03 source custody in-flight rewrite test-first RED
+on:
+  push:
+    branches: [build/noerith-q03-snapshot-signed-red-20261018]
+    paths: [.github/workflows/noerith-q03-v1-inflight-custody-expected-red-20261018.yml]
+permissions:
+  contents: read
+jobs:
+  exact-source-private-red:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    env:
+      TARGET_SHA: e0ea906110caad76742d2f6fd1b565e84dc5eae7
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Source-free privacy contract
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Ephemeral exact private read-only checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Exact Rust assertion RED, stable positive, no raw private output
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          LOG="$RUNNER_TEMP/q03-private-inflight-red.log"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          if ! rustup toolchain install 1.98.1 --profile minimal --no-self-update >"$RUNNER_TEMP/q03-toolchain-private.log" 2>&1; then
+            echo Q03_CUSTODY_RED=TOOLCHAIN_UNAVAILABLE
+            exit 1
+          fi
+          export RUSTUP_TOOLCHAIN=1.98.1
+          export CARGO_HOME="$RUNNER_TEMP/q03-custody-cargo"
+          export CARGO_TARGET_DIR="$RUNNER_TEMP/q03-custody-target"
+          mkdir -m 700 "$CARGO_HOME"
+          cd "$ROOT"
+          set +e
+          cargo test --manifest-path research/q03-legacy-v1-auth-probe/Cargo.toml --test q03_reader_inflight_custody_red >"$LOG" 2>&1
+          result=$?
+          set -e
+          python3 - "$LOG" "$result" <<'PY'
+          import re, sys
+          from pathlib import Path
+          report = Path(sys.argv[1]).read_text(errors="replace")
+          failed = re.findall(r"^test ([A-Za-z0-9_]+) \.\.\. FAILED$", report, re.M)
+          passed = re.findall(r"^test ([A-Za-z0-9_]+) \.\.\. ok$", report, re.M)
+          target = "q03_inflight_reader_cannot_approve_a_source_rewritten_after_first_chunk"
+          control = "q03_stable_reader_positive_control_accepts_the_same_original_v1_message"
+          clean = not re.search(r"^error\[E[0-9]+\]:|^error: could not compile", report, re.M)
+          correct = (
+            sys.argv[2] == "101" and failed == [target] and passed == [control]
+            and "Q03_SOURCE_CUSTODY_INFLIGHT_MUTATION_MUST_NOT_AUTHORIZE_STALE_AUTHENTICATED_BYTES" in report
+            and "test result: FAILED. 1 passed; 1 failed;" in report
+            and report.count("panicked at") == 1 and clean
+          )
+          if not correct:
+            print("Q03_CUSTODY_RED=WRONG_FAILURE_CLASS")
+            print("Q03_CUSTODY_FAILED_COUNT="+str(len(failed)))
+            print("Q03_CUSTODY_CONTROL_PASSED="+str(passed == [control]))
+            print("Q03_CUSTODY_EXPECTED_ASSERTION="+str("Q03_SOURCE_CUSTODY_INFLIGHT_MUTATION_MUST_NOT_AUTHORIZE_STALE_AUTHENTICATED_BYTES" in report))
+            print("Q03_CUSTODY_COMPILE_OK="+str(clean))
+            sys.exit(1)
+          print("Q03_CUSTODY_REAL_INFLIGHT_REWRITE_ASSERTION_RED=OBSERVED")
+          print("Q03_CUSTODY_UNCHANGED_SOURCE_POSITIVE=PASS")
+          PY
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --quiet --exit-code
+          echo Q03_CUSTODY_RED_EXACT_PRIVATE_SHA=PASS
