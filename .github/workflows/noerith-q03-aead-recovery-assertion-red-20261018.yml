@@ -1,0 +1,54 @@
+name: NOERITH Q03 legacy-v1 recovery AEAD diagnostic RED
+on:
+  push:
+    branches: [build/noerith-q03-snapshot-signed-red-20261018]
+    paths: [.github/workflows/noerith-q03-aead-recovery-assertion-red-20261018.yml]
+permissions:
+  contents: read
+jobs:
+  q03-source-bound-aead-red:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      TARGET_SHA: 21643970242d3ad1ad65af7fe3fafe81f6202b98
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Source-free privacy contract
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Exact private read-only diagnostic test source
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Classify source-bound AEAD recovery assertion RED without private logs
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          LOGDIR="$RUNNER_TEMP/q03-aead-private"
+          mkdir -m 700 "$LOGDIR"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          if ! rustup toolchain install 1.98.1 --profile minimal --no-self-update >"$LOGDIR/rustup.log" 2>&1; then
+            echo Q03_AEAD_DIAGNOSTIC=TOOLCHAIN_UNAVAILABLE
+            exit 1
+          fi
+          export RUSTUP_TOOLCHAIN=1.98.1
+          cd "$ROOT"
+          if cargo test --locked -p noerith-storage --test q03_sqlite_epoch_range q03_recovery_requires_aead_authenticity_even_when_digest_and_header_match -- --exact >"$LOGDIR/test.log" 2>&1; then
+            echo Q03_AEAD_DIAGNOSTIC=UNEXPECTED_GREEN
+            exit 1
+          fi
+          if grep -Fq 'test q03_recovery_requires_aead_authenticity_even_when_digest_and_header_match ... FAILED' "$LOGDIR/test.log" &&
+             grep -Fq 'Q03_CRASH_RECOVERY_MUST_AUTHENTICATE_SOURCE_BOUND_AEAD_TAG' "$LOGDIR/test.log" &&
+             grep -Fq 'test result: FAILED. 0 passed; 1 failed;' "$LOGDIR/test.log"; then
+            echo Q03_AEAD_ASSERTION_RED=OBSERVED
+          else
+            echo Q03_AEAD_DIAGNOSTIC=WRONG_FAILURE_CLASS
+            exit 1
+          fi
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --quiet --exit-code
+          echo Q03_AEAD_RED_EXACT_PRIVATE_SOURCE=PASS
