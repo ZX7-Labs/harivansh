@@ -1,0 +1,55 @@
+name: NOERITH Q03 isolated signed snapshot assertion RED
+on:
+  push:
+    branches: [build/noerith-q03-snapshot-signed-red-20261018]
+    paths: [.github/workflows/noerith-q03-snapshot-signed-red-20261018.yml]
+permissions:
+  contents: read
+jobs:
+  exact-q03-snapshot-test-first:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      TARGET_SHA: 350602af01ddb5777bf9a7783d24edb230b235dd
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Public source-free privacy contract
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Ephemeral exact private read-only source
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Check exact Q03 Rust test-first semantic RED without public source
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          LOG="$RUNNER_TEMP/q03-snapshot-private-red.log"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          if ! rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy --no-self-update >"$RUNNER_TEMP/q03-rustup-private.log" 2>&1; then
+            echo Q03_SNAPSHOT_RED=TOOLCHAIN_UNAVAILABLE
+            exit 1
+          fi
+          export RUSTUP_TOOLCHAIN=1.98.1
+          cd "$ROOT"
+          if cargo test --locked -p noerith-storage --test q03_snapshot_signed_metadata_red -- --test-threads=1 >"$LOG" 2>&1; then
+            echo Q03_SNAPSHOT_RED=UNEXPECTED_GREEN
+            exit 1
+          fi
+          if grep -Fq 'test q03_snapshot_source_version_u64_max_cannot_wrap_predecessor_sqlite_version ... FAILED' "$LOG" &&
+             grep -Fq 'test q03_snapshot_authority_epoch_u64_max_cannot_wrap_sqlite_integer ... FAILED' "$LOG" &&
+             grep -Fq 'test q03_synthetic_snapshot_positive_control_remains_quarantined ... ok' "$LOG" &&
+             test "$(grep -Fc 'unrepresentable snapshot epoch/version must reject with typed error BEFORE mutation:' "$LOG")" -eq 2 &&
+             grep -Fq 'test result: FAILED. 1 passed; 2 failed;' "$LOG"; then
+            echo Q03_SNAPSHOT_ASSERTION_RED=OBSERVED
+          else
+            echo Q03_SNAPSHOT_RED=WRONG_FAILURE_CLASS
+            exit 1
+          fi
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --quiet --exit-code
+          echo Q03_SNAPSHOT_EXACT_PRIVATE_SOURCE=VERIFIED
