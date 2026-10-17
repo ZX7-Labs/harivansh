@@ -1,0 +1,61 @@
+name: NOERITH Q03 exact predecessor private Rustfmt ciphertext
+on:
+  push:
+    branches: [build/noerith-q03-snapshot-signed-red-20261018]
+    paths: [.github/workflows/noerith-q03-predecessor-encrypted-rustfmt-20261018.yml]
+permissions:
+  contents: read
+jobs:
+  crypted-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    env:
+      TARGET_SHA: 9f1a60d737e77dcec4af10a99826a54e316ce6ce
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Public source-free privacy contract
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Ephemeral exact read-only private checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Pin private formatter and encrypt its entire private change
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          PATCH="$RUNNER_TEMP/q03-predecessor-private-fmt.patch"
+          SEALED="$RUNNER_TEMP/q03-predecessor-private-fmt.cms"
+          CERT="$GITHUB_WORKSPACE/certs/q03-local-only-encrypted-diagnostics-20261018.pem"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          openssl x509 -in "$CERT" -noout >"$RUNNER_TEMP/check-private-cert.log" 2>&1
+          rustup toolchain install 1.98.1 --profile minimal --component rustfmt --no-self-update >"$RUNNER_TEMP/rustup-private.log" 2>&1
+          export RUSTUP_TOOLCHAIN=1.98.1
+          cd "$ROOT"
+          cargo fmt --all >"$RUNNER_TEMP/private-fmt.log" 2>&1
+          cargo fmt --all -- --check >"$RUNNER_TEMP/private-fmt-check.log" 2>&1
+          git diff --binary -- crates/noerith-storage/src/frontier.rs crates/noerith-storage/tests/q03_sqlite_epoch_range.rs >"$PATCH"
+          test -s "$PATCH"
+          [ "$(git diff --name-only | wc -l)" -ge 1 ]
+          git diff --name-only | while IFS= read -r path; do
+            case "$path" in
+              crates/noerith-storage/src/frontier.rs|crates/noerith-storage/tests/q03_sqlite_epoch_range.rs) ;;
+              *) echo Q03_PREDECESSOR_FMT_UNEXPECTED_FILE=FAIL; exit 1 ;;
+            esac
+          done
+          echo "Q03_PREDECESSOR_FMT_SHA256=$(sha256sum "$PATCH" | cut -d' ' -f1)"
+          echo "Q03_PREDECESSOR_FMT_BYTES=$(wc -c <"$PATCH")"
+          openssl cms -encrypt -binary -aes256 -outform DER -in "$PATCH" -out "$SEALED" "$CERT" >"$RUNNER_TEMP/private-cms.log" 2>&1
+          test -s "$SEALED"
+          rm -f "$PATCH" "$RUNNER_TEMP/private-fmt.log" "$RUNNER_TEMP/private-fmt-check.log"
+          echo Q03_PREDECESSOR_FMT_CIPHERTEXT_ONLY=PASS
+      - name: Upload ciphertext with one-day retention
+        uses: actions/upload-artifact@v4
+        with:
+          name: q03-predecessor-private-fmt-ciphertext
+          path: ${{ runner.temp }}/q03-predecessor-private-fmt.cms
+          retention-days: 1
+          if-no-files-found: error
