@@ -37,6 +37,26 @@ jobs:
               echo "Q03_EXACT_$label=PASS"
             else
               echo "Q03_EXACT_$label=FAIL"
+              if test "$label" = rustfmt; then
+                Q03_PRIVATE_LOG="$LOGDIR/$label.log" python3 - <<'PY'
+          import os
+          from pathlib import Path
+          import re
+          log = Path(os.environ["Q03_PRIVATE_LOG"]).read_text(encoding="utf-8", errors="replace")
+          hunks = re.findall(r"(?m)^Diff in ([^:\n]+\.rs):(\d+):", log)
+          roles = []
+          for path, line in hunks:
+              if path.endswith("q03_sqlite_epoch_range.rs"):
+                  role = "Q03_TEST"
+              elif path.endswith("noerith-storage/src/engine.rs"):
+                  role = "Q03_ENGINE"
+              else:
+                  role = "OTHER_RUST_FILE"
+              roles.append(role + "@" + line)
+          print("Q03_FMT_HUNK_COUNT=" + str(len(roles)))
+          print("Q03_FMT_SAFE_COORDINATES=" + ",".join(roles[:80]))
+          PY
+              fi
               if test "$label" = strict-clippy; then
                 Q03_PRIVATE_LOG="$LOGDIR/$label.log" python3 - <<'PY'
           import os
@@ -102,11 +122,11 @@ jobs:
           check toolchain rustup toolchain install 1.98.1 --profile minimal --component clippy --component rustfmt --no-self-update
           export RUSTUP_TOOLCHAIN=1.98.1
           cd "$ROOT"
+          check rustfmt cargo fmt --all -- --check
           check strict-clippy cargo clippy --locked --workspace --all-targets -- -D warnings
           check signed-epoch-and-custody cargo test --locked -p noerith-storage --test q03_sqlite_epoch_range
           check storage-regression cargo test --locked -p noerith-storage
           check full-workspace cargo test --locked --workspace
-          check rustfmt cargo fmt --all -- --check
           test "$(git rev-parse HEAD)" = "$TARGET_SHA"
           git diff --quiet --exit-code
           echo "Q03_EXACT_PRIVATE_SOURCE_ALL_GATES=PASS"
