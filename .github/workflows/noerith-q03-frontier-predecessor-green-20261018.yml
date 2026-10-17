@@ -1,0 +1,60 @@
+name: NOERITH Q03 predecessor frontier guarded recovery exact verification
+on:
+  push:
+    branches: [build/noerith-q03-snapshot-signed-red-20261018]
+    paths: [.github/workflows/noerith-q03-frontier-predecessor-green-20261018.yml]
+permissions:
+  contents: read
+jobs:
+  exact-private-regressions:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      TARGET_SHA: 9f1a60d737e77dcec4af10a99826a54e316ce6ce
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Public source-free privacy contract
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Ephemeral exact read-only private checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Pinned exact-scope and full private regression qualification
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          LOGDIR="$RUNNER_TEMP/q03-predecessor-private-logs"
+          mkdir -m 700 "$LOGDIR"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          gate() {
+            local name="$1"
+            shift
+            if "$@" >"$LOGDIR/$name.log" 2>&1; then
+              echo "Q03_PREDECESSOR_GREEN_$name=PASS"
+            else
+              echo "Q03_PREDECESSOR_GREEN_$name=FAIL"
+              exit 1
+            fi
+          }
+          gate toolchain rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy --no-self-update
+          export RUSTUP_TOOLCHAIN=1.98.1
+          cd "$ROOT"
+          gate focused cargo test --locked -p noerith-storage --test q03_sqlite_epoch_range q03_recovery_never_reactivates_conflicting_independent_blocked_frontier
+          gate epoch cargo test --locked -p noerith-storage --test q03_sqlite_epoch_range
+          gate source_authority cargo test --locked -p noerith-storage --test q03_pending_authority_red
+          gate storage cargo test --locked -p noerith-storage --test q03_storage
+          gate signed_snapshot cargo test --locked -p noerith-storage --test q03_snapshot_signed_metadata_red
+          gate workspace cargo test --locked --workspace
+          gate python_spec python3 tools/verify_spec.py
+          gate python_regressions python3 -m unittest discover -s tools/tests -p 'test_verify_spec*.py' -v
+          gate strict_clippy cargo clippy --locked --workspace --all-targets -- -D warnings
+          gate rustfmt cargo fmt --all -- --check
+          gate metadata cargo metadata --locked --format-version 1 --no-deps
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --quiet --exit-code
+          echo Q03_PREDECESSOR_GREEN_EXACT_PRIVATE_SOURCE=PASS
