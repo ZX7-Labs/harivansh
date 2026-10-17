@@ -40,7 +40,7 @@ jobs:
               exit 1
             fi
           }
-          gate toolchain rustup toolchain install 1.98.1 --profile minimal --component rustfmt --no-self-update
+          gate toolchain rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy --no-self-update
           export RUSTUP_TOOLCHAIN=1.98.1
           gate target rustup target add i686-unknown-linux-gnu
           # A real 32-bit ELF must be linked/executed, not just cargo checked.
