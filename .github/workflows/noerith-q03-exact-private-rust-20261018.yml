@@ -37,6 +37,23 @@ jobs:
               echo "Q03_EXACT_$label=PASS"
             else
               echo "Q03_EXACT_$label=FAIL"
+              if test "$label" = strict-clippy; then
+                Q03_PRIVATE_LOG="$LOGDIR/$label.log" python3 - <<'PY'
+          import os
+          from pathlib import Path
+          import re
+          log = Path(os.environ["Q03_PRIVATE_LOG"]).read_text(encoding="utf-8", errors="replace")
+          lints = sorted(set(re.findall(r"-D (clippy::[a-z0-9_]+)", log)))
+          locations = re.findall(r"(?m)^\s*-->\s+([^:\n]+\.rs):(\d+):(\d+)", log)
+          safe_sites = []
+          for filename, line, _ in locations[:16]:
+              role = "Q03_TEST_SOURCE" if filename.endswith("q03_sqlite_epoch_range.rs") else "OTHER_RUST_SOURCE"
+              safe_sites.append(role + "@" + line)
+          print("Q03_CLIPPY_ERROR_COUNT=" + str(len(re.findall(r"(?m)^error(?:\[E\d+\])?:", log))))
+          print("Q03_CLIPPY_LINT_TYPES=" + ",".join(lints))
+          print("Q03_CLIPPY_SAFE_SITES=" + ",".join(safe_sites))
+          PY
+              fi
               if grep -Eq 'error: no test target named|error: package ID specification' "$LOGDIR/$label.log"; then
                 echo "Q03_DIAG_$label=TARGET_SELECTION"
               elif grep -Eq 'error\\[E[0-9]+\\]|error: could not compile|error: expected|error: unresolved import' "$LOGDIR/$label.log"; then
@@ -85,10 +102,10 @@ jobs:
           check toolchain rustup toolchain install 1.98.1 --profile minimal --component clippy --component rustfmt --no-self-update
           export RUSTUP_TOOLCHAIN=1.98.1
           cd "$ROOT"
+          check strict-clippy cargo clippy --locked --workspace --all-targets -- -D warnings
           check signed-epoch-and-custody cargo test --locked -p noerith-storage --test q03_sqlite_epoch_range
           check storage-regression cargo test --locked -p noerith-storage
           check full-workspace cargo test --locked --workspace
-          check strict-clippy cargo clippy --locked --workspace --all-targets -- -D warnings
           check rustfmt cargo fmt --all -- --check
           test "$(git rev-parse HEAD)" = "$TARGET_SHA"
           git diff --quiet --exit-code
