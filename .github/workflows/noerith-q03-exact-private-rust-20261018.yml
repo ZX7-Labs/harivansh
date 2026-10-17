@@ -37,6 +37,19 @@ jobs:
               echo "Q03_EXACT_$label=PASS"
             else
               echo "Q03_EXACT_$label=FAIL"
+              if grep -Eq 'error: no test target named|error: package ID specification' "$LOGDIR/$label.log"; then
+                echo "Q03_DIAG_$label=TARGET_SELECTION"
+              elif grep -Eq 'error\\[E[0-9]+\\]|error: could not compile|error: expected|error: unresolved import' "$LOGDIR/$label.log"; then
+                echo "Q03_DIAG_$label=RUST_COMPILATION"
+              elif grep -Fq 'test result: FAILED' "$LOGDIR/$label.log"; then
+                echo "Q03_DIAG_$label=TEST_ASSERTION"
+              elif grep -Eq 'failed to download|failed to select a version|failed to get|failed to load source|checksum failed|lock file' "$LOGDIR/$label.log"; then
+                echo "Q03_DIAG_$label=DEPENDENCY_OR_LOCK"
+              elif grep -Eq 'panicked|SIGSEGV|signal: [0-9]+|timed out' "$LOGDIR/$label.log"; then
+                echo "Q03_DIAG_$label=RUNTIME_OR_TIMEOUT"
+              else
+                echo "Q03_DIAG_$label=UNCLASSIFIED_REQUIRES_PRIVATE_INSPECTION"
+              fi
               exit 1
             fi
           }
