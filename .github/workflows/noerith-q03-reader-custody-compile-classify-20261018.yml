@@ -1,0 +1,55 @@
+name: NOERITH Q03 reader mutation private compiler-class diagnosis
+on:
+  push:
+    branches: [build/noerith-q03-snapshot-signed-red-20261018]
+    paths: [.github/workflows/noerith-q03-reader-custody-compile-classify-20261018.yml]
+permissions:
+  contents: read
+jobs:
+  private-diagnostics:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      TARGET_SHA: e0ea906110caad76742d2f6fd1b565e84dc5eae7
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Public relay privacy policy
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Ephemeral exact read-only private checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Categorize compiler diagnostics by error codes, suppress all private text
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          LOG="$RUNNER_TEMP/private-rust-diagnostics.log"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --no-self-update >"$RUNNER_TEMP/q03-private-rustup.log" 2>&1
+          export RUSTUP_TOOLCHAIN=1.98.1
+          export CARGO_HOME="$RUNNER_TEMP/q03-compiler-class-home"
+          export CARGO_TARGET_DIR="$RUNNER_TEMP/q03-compiler-class-target"
+          mkdir -m 700 "$CARGO_HOME"
+          cd "$ROOT"
+          set +e
+          cargo test --manifest-path research/q03-legacy-v1-auth-probe/Cargo.toml --test q03_reader_inflight_custody_red --no-run >"$LOG" 2>&1
+          status=$?
+          set -e
+          python3 - "$LOG" "$status" <<'PY'
+          import re,sys
+          from pathlib import Path
+          d=Path(sys.argv[1]).read_text(errors="replace")
+          codes=sorted(set(re.findall(r"^error\[(E[0-9]{4})\]", d, re.M)))
+          print("Q03_READER_COMPILE_PROCESS="+sys.argv[2])
+          print("Q03_READER_COMPILE_ERROR_COUNT="+str(len(re.findall(r"^error\[E[0-9]{4}\]",d,re.M))))
+          print("Q03_READER_COMPILE_CODE_SET="+(",".join(codes) if codes else "NONE"))
+          print("Q03_READER_COMPILE_UNCODED="+str(len(re.findall(r"^error: (?!could not compile|aborting|test failed)",d,re.M))))
+          PY
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --quiet --exit-code
+          echo Q03_READER_DIAGNOSTIC_PRIVATE_IDENTITY=PASS
