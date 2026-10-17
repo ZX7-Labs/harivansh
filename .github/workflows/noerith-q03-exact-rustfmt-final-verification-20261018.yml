@@ -1,0 +1,58 @@
+name: NOERITH Q03 exact rustfmt and full candidate qualification
+on:
+  push:
+    branches: [build/noerith-q03-snapshot-signed-red-20261018]
+    paths: [.github/workflows/noerith-q03-exact-rustfmt-final-verification-20261018.yml]
+permissions:
+  contents: read
+jobs:
+  q03-exact-candidate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      TARGET_SHA: 86db2743f94ffd6dafb2ab5e0becc735403f6da1
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Public source-free relay privacy contract
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Ephemeral exact private read-only checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Exact pinned Rust 1.98.1 format and regression gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          LOGDIR="$RUNNER_TEMP/noerith-q03-final-private-logs"
+          mkdir -m 700 "$LOGDIR"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          gate() {
+            local name="$1"
+            shift
+            if "$@" >"$LOGDIR/$name.log" 2>&1; then
+              echo "Q03_FINAL_$name=PASS"
+            else
+              echo "Q03_FINAL_$name=FAIL"
+              exit 1
+            fi
+          }
+          gate toolchain rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy --no-self-update
+          export RUSTUP_TOOLCHAIN=1.98.1
+          cd "$ROOT"
+          gate rustfmt cargo fmt --all -- --check
+          gate focused cargo test --locked -p noerith-storage --test q03_snapshot_signed_metadata_red
+          gate epoch cargo test --locked -p noerith-storage --test q03_sqlite_epoch_range
+          gate q03_storage cargo test --locked -p noerith-storage --test q03_storage
+          gate s00_spec python3 tools/verify_spec.py
+          gate s00_regressions python3 -m unittest discover -s tools/tests -p 'test_verify_spec*.py' -v
+          gate workspace cargo test --locked --workspace
+          gate clippy cargo clippy --locked --workspace --all-targets -- -D warnings
+          gate metadata cargo metadata --locked --format-version 1 --no-deps
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --quiet --exit-code
+          echo Q03_FINAL_EXACT_PRIVATE_CANDIDATE_ALL_GATES=PASS
