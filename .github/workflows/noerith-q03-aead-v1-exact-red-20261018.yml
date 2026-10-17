@@ -1,0 +1,60 @@
+name: NOERITH Q03 original v1 AEAD exact-source test-first RED
+on:
+  push:
+    branches: [build/noerith-q03-snapshot-signed-red-20261018]
+    paths: [.github/workflows/noerith-q03-aead-v1-exact-red-20261018.yml]
+permissions:
+  contents: read
+jobs:
+  aead-v1-assertion-red:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 65
+    env:
+      TARGET_SHA: efc3994dc24b1ff67e347e91e9816ef376bca2d0
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Public source-free control contract
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Ephemeral read-only exact private checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Authenticate expected test assertion RED; no raw logs disclosed
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          LOG="$RUNNER_TEMP/q03-private-v1-aead-assertion-red.log"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          if ! rustup toolchain install 1.98.1 --profile minimal --component rustfmt --no-self-update >"$RUNNER_TEMP/q03-private-toolchain.log" 2>&1; then
+            echo Q03_V1_AEAD_RED=TOOLCHAIN_UNAVAILABLE
+            exit 1
+          fi
+          export RUSTUP_TOOLCHAIN=1.98.1
+          cd "$ROOT"
+          set +e
+          cargo test --locked -p noerith-storage --test q03_sqlite_epoch_range q03_aead_v1_recovery_rejects_ >"$LOG" 2>&1
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo Q03_V1_AEAD_RED=UNEXPECTED_GREEN
+            exit 1
+          fi
+          if grep -Fq 'test q03_aead_v1_recovery_rejects_modified_tag_with_matching_forged_digest ... FAILED' "$LOG" &&
+             grep -Fq 'test q03_aead_v1_recovery_rejects_modified_nonce_with_matching_forged_digest ... FAILED' "$LOG" &&
+             grep -Fq 'test q03_aead_v1_recovery_rejects_modified_ciphertext_with_matching_forged_digest ... FAILED' "$LOG" &&
+             test "$(grep -Fc 'Q03_RECOVERY_AEAD_V1_AUTHENTICATION_REQUIRED:' "$LOG")" -eq 3 &&
+             grep -Fq 'test result: FAILED. 0 passed; 3 failed;' "$LOG" &&
+             ! grep -Eq '^error(\\[E[0-9]+\\])?:' "$LOG"; then
+            echo Q03_V1_AEAD_THREE_ASSERTION_RED=OBSERVED
+          else
+            echo Q03_V1_AEAD_RED=WRONG_FAILURE_CLASS
+            exit 1
+          fi
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --quiet --exit-code
+          echo Q03_V1_AEAD_RED_EXACT_PRIVATE_SOURCE=PASS
