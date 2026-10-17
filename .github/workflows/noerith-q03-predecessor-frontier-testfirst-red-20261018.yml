@@ -1,0 +1,59 @@
+name: NOERITH Q03 independent BLOCKED frontier test-first RED
+on:
+  push:
+    branches: [build/noerith-q03-snapshot-signed-red-20261018]
+    paths: [.github/workflows/noerith-q03-predecessor-frontier-testfirst-red-20261018.yml]
+permissions:
+  contents: read
+jobs:
+  exact-private-red:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    env:
+      TARGET_SHA: 8e2ff7ceb8ab90618efcb88f5b78bfa606305b9e
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Public source-free contract
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Ephemeral exact private read-only checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Qualify real single expected assertion RED without exposing source
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          LOG="$RUNNER_TEMP/q03-blocked-private-red.log"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --no-self-update >"$RUNNER_TEMP/private-toolchain.log" 2>&1
+          export RUSTUP_TOOLCHAIN=1.98.1
+          cd "$ROOT"
+          set +e
+          cargo test --locked -p noerith-storage --test q03_sqlite_epoch_range q03_recovery_never_reactivates_conflicting_independent_blocked_frontier >"$LOG" 2>&1
+          status=$?
+          set -e
+          python3 - "$LOG" "$status" <<'PY'
+          import re,sys
+          from pathlib import Path
+          d=Path(sys.argv[1]).read_text(errors="replace")
+          fail=re.findall(r"^test ([A-Za-z0-9_]+) \.\.\. FAILED$",d,re.M)
+          expected=["q03_recovery_never_reactivates_conflicting_independent_blocked_frontier"]
+          good=(sys.argv[2]=="101" and fail==expected
+                and "Q03_PENDING_MUST_NOT_REACTIVATE_CONFLICTING_BLOCKED_SOURCE_FRONTIER" in d
+                and "test result: FAILED. 0 passed; 1 failed;" in d
+                and not re.search(r"^error\[E[0-9]+\]:|^error: could not compile",d,re.M))
+          if not good:
+            print("Q03_BLOCKED_FRONTIER_RED=UNQUALIFIED")
+            print("Q03_BLOCKED_FRONTIER_FAIL_COUNT="+str(len(fail)))
+            print("Q03_BLOCKED_FRONTIER_EXPECTED_ASSERT="+str("Q03_PENDING_MUST_NOT_REACTIVATE_CONFLICTING_BLOCKED_SOURCE_FRONTIER" in d))
+            sys.exit(1)
+          print("Q03_BLOCKED_FRONTIER_ASSERTION_RED=OBSERVED")
+          PY
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --quiet --exit-code
+          echo Q03_BLOCKED_FRONTIER_EXACT_PRIVATE_SOURCE=PASS
