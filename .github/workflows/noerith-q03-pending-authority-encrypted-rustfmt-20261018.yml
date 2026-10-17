@@ -39,7 +39,15 @@ jobs:
           cargo fmt --all -- --check >"$RUNNER_TEMP/format-check-private.log" 2>&1
           git diff --binary -- crates/noerith-storage/src/frontier.rs crates/noerith-storage/tests/q03_pending_authority_red.rs >"$PATCH"
           test -s "$PATCH"
-          test "$(git diff --name-only | wc -l)" -eq 2
+          changed_count="$(git diff --name-only | wc -l)"
+          echo "Q03_PENDING_FMT_CHANGED_FILE_COUNT=$changed_count"
+          test "$changed_count" -ge 1
+          git diff --name-only | while IFS= read -r path; do
+            case "$path" in
+              crates/noerith-storage/src/frontier.rs|crates/noerith-storage/tests/q03_pending_authority_red.rs) ;;
+              *) echo Q03_PENDING_FMT_UNEXPECTED_FILE=FAIL; exit 1 ;;
+            esac
+          done
           echo "Q03_PENDING_FMT_PATCH_SHA256=$(sha256sum "$PATCH" | cut -d' ' -f1)"
           echo "Q03_PENDING_FMT_PATCH_BYTES=$(wc -c <"$PATCH")"
           openssl cms -encrypt -binary -aes256 -outform DER -in "$PATCH" -out "$SEALED" "$CERT" >"$RUNNER_TEMP/cms-private.log" 2>&1
