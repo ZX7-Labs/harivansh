@@ -1,0 +1,61 @@
+name: NOERITH Q03 encrypted private rustfmt patch
+on:
+  push:
+    branches: [build/noerith-q03-snapshot-signed-red-20261018]
+    paths: [.github/workflows/noerith-q03-encrypted-rustfmt-patch-20261018.yml]
+permissions:
+  contents: read
+jobs:
+  encrypted-source-format-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      TARGET_SHA: 0de16eaf7a84dd490aae3f7d9eb2cc15036d1c24
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Source-free public privacy contract
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Exact private detached read-only checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Generate exact pinned Rustfmt patch and seal before upload
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          PATCH="$RUNNER_TEMP/q03-private-format.patch"
+          SEALED="$RUNNER_TEMP/noerith-q03-private-rustfmt.cms"
+          CERT="$GITHUB_WORKSPACE/certs/noerith-q03-ephemeral-format-recipient-20261018.pem"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          openssl x509 -in "$CERT" -noout >/dev/null
+          if ! rustup toolchain install 1.98.1 --profile minimal --component rustfmt --no-self-update >"$RUNNER_TEMP/rustup-private.log" 2>&1; then
+            echo Q03_FORMAT_TOOLCHAIN=UNAVAILABLE
+            exit 1
+          fi
+          export RUSTUP_TOOLCHAIN=1.98.1
+          cd "$ROOT"
+          cargo fmt --all >"$RUNNER_TEMP/q03-format-private.log" 2>&1
+          cargo fmt --all -- --check >"$RUNNER_TEMP/q03-format-check-private.log" 2>&1
+          git diff --binary >"$PATCH"
+          test -s "$PATCH"
+          patch_sha="$(sha256sum "$PATCH" | cut -d' ' -f1)"
+          patch_bytes="$(wc -c <"$PATCH")"
+          openssl cms -encrypt -binary -aes256 -outform DER -in "$PATCH" -out "$SEALED" "$CERT" >"$RUNNER_TEMP/q03-encrypt-private.log" 2>&1
+          test -s "$SEALED"
+          rm -f "$PATCH" "$RUNNER_TEMP/q03-format-private.log" "$RUNNER_TEMP/q03-format-check-private.log"
+          echo "Q03_RUSTFMT_EXACT_PRIVATE_SHA=$TARGET_SHA"
+          echo "Q03_RUSTFMT_PATCH_SHA256=$patch_sha"
+          echo "Q03_RUSTFMT_PATCH_BYTES=$patch_bytes"
+          echo Q03_RUSTFMT_ENCRYPTED_TRANSFER_READY=PASS
+      - name: Upload ciphertext only, one-day expiry
+        uses: actions/upload-artifact@v4
+        with:
+          name: noerith-q03-private-rustfmt-encrypted
+          path: ${{ runner.temp }}/noerith-q03-private-rustfmt.cms
+          if-no-files-found: error
+          retention-days: 1
