@@ -1,0 +1,57 @@
+name: NOERITH Q03 original-v1 independent libsodium known answer research
+on:
+  push:
+    branches: [build/noerith-q03-snapshot-signed-red-20261018]
+    paths: [.github/workflows/noerith-q03-libsodium-independent-kat-20261018.yml]
+permissions:
+  contents: read
+jobs:
+  external-kat-private-research:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 70
+    env:
+      TARGET_SHA: b70e2dd4f762a938e2fdae2ab55288f5fb0ae05f
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Public source-free privacy contract
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Ephemeral exact read-only private checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Original format KAT plus Rustfmt and strict Clippy, no private logs
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          LOGDIR="$RUNNER_TEMP/q03-original-kat-private-logs"
+          mkdir -m 700 "$LOGDIR"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          gate() {
+            local name="$1"; shift
+            if "$@" >"$LOGDIR/$name.log" 2>&1; then
+              echo "Q03_LIBSODIUM_KAT_$name=PASS"
+            else
+              echo "Q03_LIBSODIUM_KAT_$name=FAIL"
+              exit 1
+            fi
+          }
+          gate toolchain rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy --no-self-update
+          export RUSTUP_TOOLCHAIN=1.98.1
+          export CARGO_HOME="$RUNNER_TEMP/q03-external-kat-home"
+          export CARGO_TARGET_DIR="$RUNNER_TEMP/q03-external-kat-target"
+          mkdir -m 700 "$CARGO_HOME"
+          cd "$ROOT"
+          M="research/q03-legacy-v1-auth-probe/Cargo.toml"
+          gate independent_known_answer cargo test --manifest-path "$M" --test q03_official_libsodium_original_v1_known_answer
+          gate all_research_tests cargo test --manifest-path "$M"
+          gate strict_clippy cargo clippy --manifest-path "$M" --all-targets -- -D warnings
+          gate rustfmt cargo fmt --manifest-path "$M" -- --check
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --quiet --exit-code
+          echo Q03_LIBSODIUM_KAT_EXACT_PRIVATE_SHA=PASS
+          echo Q03_LIBSODIUM_KAT_SCOPE=NONSHIPPING_INDEPENDENT_PUBLIC_VECTOR_NOT_CRYPTO_SECURITY_AUDIT
