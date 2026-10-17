@@ -48,6 +48,8 @@ jobs:
             gate install_multilib sudo apt-get update -qq
             gate install_32bit_linker sudo apt-get install -y -qq gcc-multilib libc6-dev-i386
           fi
+          # Rebuild the loader probe after installing missing multilib support.
+          gate rebuild_loader sh -c 'printf "int main(void){return 0;}\\n" | gcc -m32 -x c - -o "$1"' sh "$LOGDIR/test-32bit-loader"
           gate loader "$LOGDIR/test-32bit-loader"
           export CARGO_HOME="$RUNNER_TEMP/q03-i686-rss-cargo-home"
           export CARGO_TARGET_DIR="$RUNNER_TEMP/q03-i686-rss-target"
