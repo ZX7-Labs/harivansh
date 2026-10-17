@@ -1,0 +1,53 @@
+name: NOERITH Q03 exact whole-workspace Rust and Python qualification
+on:
+  push:
+    branches: [build/noerith-q03-snapshot-signed-red-20261018]
+    paths: [.github/workflows/noerith-q03-full-workspace-test-20261018.yml]
+permissions:
+  contents: read
+jobs:
+  q03-exact-workspace:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      TARGET_SHA: 0de16eaf7a84dd490aae3f7d9eb2cc15036d1c24
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Source-free privacy contract
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Read-only exact private SHA
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Whole workspace Rust 1.98.1 exact regression without plaintext logs
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          LOG="$RUNNER_TEMP/q03-full-workspace-private.log"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          if ! rustup toolchain install 1.98.1 --profile minimal --component clippy --component rustfmt --no-self-update >"$RUNNER_TEMP/q03-toolchain-private.log" 2>&1; then
+            echo Q03_FULL_WORKSPACE_TOOLCHAIN=FAIL
+            exit 1
+          fi
+          export RUSTUP_TOOLCHAIN=1.98.1
+          cd "$ROOT"
+          if cargo test --locked --workspace >"$LOG" 2>&1; then
+            echo Q03_FULL_WORKSPACE_TESTS=PASS
+          else
+            echo Q03_FULL_WORKSPACE_TESTS=FAIL
+            exit 1
+          fi
+          if cargo clippy --locked --workspace --all-targets -- -D warnings >"$RUNNER_TEMP/q03-full-clippy-private.log" 2>&1; then
+            echo Q03_FULL_WORKSPACE_STRICT_CLIPPY=PASS
+          else
+            echo Q03_FULL_WORKSPACE_STRICT_CLIPPY=FAIL
+            exit 1
+          fi
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --quiet --exit-code
+          echo Q03_FULL_WORKSPACE_EXACT_SOURCE=PASS
