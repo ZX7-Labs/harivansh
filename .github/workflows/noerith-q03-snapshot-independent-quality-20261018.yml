@@ -1,0 +1,64 @@
+name: NOERITH Q03 exact independent format lint and baseline checks
+on:
+  push:
+    branches: [build/noerith-q03-snapshot-signed-red-20261018]
+    paths: [.github/workflows/noerith-q03-snapshot-independent-quality-20261018.yml]
+permissions:
+  contents: read
+jobs:
+  exact-q03-independent-quality:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      TARGET_SHA: 83e028daa0d6f95ea40b5686156b36f2d1dd990f
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Public source-free privacy contract
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Ephemeral exact private read-only source
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Distinct independent quality gates on exact private SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          LOGDIR="$RUNNER_TEMP/q03-snapshot-independent-private-logs"
+          mkdir -m 700 "$LOGDIR"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          if ! rustup toolchain install 1.98.1 --profile minimal --component clippy --component rustfmt --no-self-update >"$LOGDIR/toolchain.log" 2>&1; then
+            echo Q03_INDEPENDENT_TOOLCHAIN=FAIL
+            exit 1
+          fi
+          export RUSTUP_TOOLCHAIN=1.98.1
+          cd "$ROOT"
+          failed=0
+          gate() {
+            local name="$1"
+            shift
+            if "$@" >"$LOGDIR/$name.log" 2>&1; then
+              echo "Q03_INDEPENDENT_$name=PASS"
+            else
+              echo "Q03_INDEPENDENT_$name=FAIL"
+              failed=1
+            fi
+          }
+          gate fmt cargo fmt --all -- --check
+          gate metadata cargo metadata --locked --format-version 1 --no-deps
+          gate cargo_check cargo check --locked --workspace --all-targets
+          gate strict_clippy cargo clippy --locked --workspace --all-targets -- -D warnings
+          gate q03_storage cargo test --locked -p noerith-storage --test q03_storage
+          gate python_spec python3 tools/verify_spec.py
+          gate python_s00 python3 -m unittest discover -s tools/tests -p 'test_verify_spec*.py' -v
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --quiet --exit-code
+          if [[ "$failed" != 0 ]]; then
+            echo Q03_INDEPENDENT_ALL_GATES=NOT_PASSED
+            exit 1
+          fi
+          echo Q03_INDEPENDENT_ALL_GATES=PASS
