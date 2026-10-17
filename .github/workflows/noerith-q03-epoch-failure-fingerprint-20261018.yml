@@ -1,0 +1,79 @@
+name: NOERITH Q03 bounded epoch baseline-vs-fix diagnostic
+on:
+  push:
+    branches: [build/noerith-q03-snapshot-signed-red-20261018]
+    paths: [.github/workflows/noerith-q03-epoch-failure-fingerprint-20261018.yml]
+permissions:
+  contents: read
+jobs:
+  source-free-q03-fingerprint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      CARGO_TERM_COLOR: never
+      BASE_SHA: 7458bb9a59c96864efd4b68a3fffa3519456433c
+      FIX_SHA: 83e028daa0d6f95ea40b5686156b36f2d1dd990f
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Public source-free privacy contract
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Exact ephemeral private revisions and source-free failure fingerprints
+        shell: bash
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          umask 077
+          LOGDIR="$RUNNER_TEMP/q03-epoch-private"
+          mkdir -m 700 "$LOGDIR"
+          if ! rustup toolchain install 1.98.1 --profile minimal --no-self-update >"$LOGDIR/toolchain.log" 2>&1; then
+            echo Q03_EPOCH_DIAG=TOOLCHAIN_UNAVAILABLE
+            exit 1
+          fi
+          export RUSTUP_TOOLCHAIN=1.98.1
+          for label in BASE FIX; do
+            if [[ "$label" == BASE ]]; then
+              sha="$BASE_SHA"
+            else
+              sha="$FIX_SHA"
+            fi
+            if ! TARGET_SHA="$sha" bash scripts/checkout-noerith-private.sh >"$LOGDIR/checkout-$label.log" 2>&1; then
+              echo "Q03_EPOCH_${label}=ACCESS_FAILED"
+              exit 1
+            fi
+            cd "$RUNNER_TEMP/noerith-private-source"
+            test "$(git rev-parse HEAD)" = "$sha"
+            if cargo test --locked -p noerith-storage --test q03_sqlite_epoch_range -- --test-threads=1 >"$LOGDIR/$label.log" 2>&1; then
+              test_result=0
+            else
+              test_result=$?
+            fi
+            python3 - "$LOGDIR/$label.log" "$LOGDIR/$label.fingerprints" "$label" "$test_result" <<'PY'
+          import hashlib
+          import pathlib
+          import re
+          import sys
+          logpath, fingerprint, label, status = sys.argv[1:]
+          log = pathlib.Path(logpath).read_text(errors="replace")
+          failed = re.findall(r"^test ([a-zA-Z0-9_:]+) \.\.\. FAILED$", log, re.M)
+          digest = sorted(hashlib.sha256(t.encode("utf-8")).hexdigest() for t in failed)
+          pathlib.Path(fingerprint).write_text("\n".join(digest)+"\n")
+          print(f"Q03_EPOCH_{label}_FAILED_COUNT={len(failed)}")
+          for value in digest:
+              print(f"Q03_EPOCH_{label}_FAILED_ID_SHA256={value}")
+          if int(status) != 0 and not failed:
+              print(f"Q03_EPOCH_{label}=NOT_ASSERTION_CLASS")
+              raise SystemExit(1)
+          print(f"Q03_EPOCH_{label}=TESTS_EXECUTED")
+          PY
+            test "$(git rev-parse HEAD)" = "$sha"
+            cd "$GITHUB_WORKSPACE"
+          done
+          if cmp -s "$LOGDIR/BASE.fingerprints" "$LOGDIR/FIX.fingerprints"; then
+            echo Q03_EPOCH_BASELINE_VS_FIX=IDENTICAL_FAILURE_IDENTITIES
+          else
+            echo Q03_EPOCH_BASELINE_VS_FIX=DIFFERENT_FAILURE_IDENTITIES
+          fi
+          echo Q03_EPOCH_SOURCE_FREE_COMPARISON=COMPLETE
