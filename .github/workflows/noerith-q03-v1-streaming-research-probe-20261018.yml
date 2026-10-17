@@ -1,0 +1,68 @@
+name: NOERITH Q03 legacy v1 bounded AEAD research probe
+on:
+  push:
+    branches: [build/noerith-q03-snapshot-signed-red-20261018]
+    paths: [.github/workflows/noerith-q03-v1-streaming-research-probe-20261018.yml]
+permissions:
+  contents: read
+jobs:
+  source-free-private-research:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    env:
+      TARGET_SHA: 58e62e7e4434ba863d36f3e5d4a485534a84efe0
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Source-free privacy contract
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Ephemeral exact private read-only source
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Research-only cross-library AEAD compatibility and format classification
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          LOGDIR="$RUNNER_TEMP/q03-v1-probe-private-logs"
+          mkdir -m 700 "$LOGDIR"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          if ! rustup toolchain install 1.98.1 --profile minimal --component rustfmt --no-self-update >"$LOGDIR/toolchain.log" 2>&1; then
+            echo Q03_PROBE_TOOLCHAIN=FAIL
+            exit 1
+          fi
+          export RUSTUP_TOOLCHAIN=1.98.1
+          export CARGO_TERM_COLOR=never
+          export CARGO_HOME="$RUNNER_TEMP/q03-probe-cargo-home"
+          export CARGO_TARGET_DIR="$RUNNER_TEMP/q03-probe-target"
+          mkdir -m 700 "$CARGO_HOME"
+          cd "$ROOT"
+          manifest="research/q03-legacy-v1-auth-probe/Cargo.toml"
+          if cargo test --manifest-path "$manifest" >"$LOGDIR/probe.log" 2>&1; then
+            echo Q03_PROBE_DIFFERENTIAL_TESTS=PASS
+          else
+            python3 - "$LOGDIR/probe.log" <<'PY'
+          import sys,re
+          from pathlib import Path
+          log=Path(sys.argv[1]).read_text(errors="replace")
+          print("Q03_PROBE_DIFFERENTIAL_TESTS=FAIL")
+          print("Q03_PROBE_COMPILER_DIAGNOSTICS="+str(len(re.findall(r"^error\\[E[0-9]+\\]:",log,re.M))))
+          print("Q03_PROBE_RUST_TEST_FAILURES="+str(len(re.findall(r"^test [a-zA-Z0-9_]+ \\\.\\\.\\\. FAILED$",log,re.M))))
+          print("Q03_PROBE_DEPENDENCY_ERROR="+str(("failed to select a version" in log) or ("failed to download" in log) or ("failed to get" in log)))
+          print("Q03_PROBE_PANICS="+str(log.count("panicked at")))
+          PY
+            exit 1
+          fi
+          if cargo fmt --manifest-path "$manifest" -- --check >"$LOGDIR/fmt.log" 2>&1; then
+            echo Q03_PROBE_RUSTFMT=PASS
+          else
+            echo Q03_PROBE_RUSTFMT=NOT_QUALIFIED
+          fi
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --quiet --exit-code
+          echo Q03_PROBE_PRIVATE_IDENTITY=PASS
+          echo Q03_PROBE_SCOPE=RESEARCH_ONLY_NOT_PRODUCT_CRYPTO_QUALIFICATION
