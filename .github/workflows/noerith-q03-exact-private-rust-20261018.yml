@@ -57,6 +57,19 @@ jobs:
           print("Q03_DIAG_FAILED_ASSERTION_COUNT=" + str(len(failures)))
           print("Q03_DIAG_FAILED_TEST_ORDINALS=" + ",".join(map(str, sorted(positions))))
           print("Q03_DIAG_MAPPED_FAILURES=" + str(len(positions)))
+          locations = re.findall(r"q03_sqlite_epoch_range\.rs:(\d+):(\d+)", log)
+          print("Q03_DIAG_PANIC_SOURCE_LINES=" + ",".join(dict.fromkeys(line for line, _ in locations)))
+          if "FOREIGN KEY constraint failed" in log:
+              category = "FOREIGN_KEY_FIXTURE_REJECTED"
+          elif "CHECK constraint failed" in log:
+              category = "SQLITE_CHECK_FIXTURE_REJECTED"
+          elif "called `Result::unwrap()` on an `Err`" in log:
+              category = "UNWRAP_ERROR_OTHER"
+          elif "assertion failed" in log:
+              category = "RUST_ASSERTION_FALSE"
+          else:
+              category = "OTHER_PRIVATE_TEST_PANIC"
+          print("Q03_DIAG_ASSERTION_CAUSE_CLASS=" + category)
           PY
                 fi
               elif grep -Eq 'failed to download|failed to select a version|failed to get|failed to load source|checksum failed|lock file' "$LOGDIR/$label.log"; then
