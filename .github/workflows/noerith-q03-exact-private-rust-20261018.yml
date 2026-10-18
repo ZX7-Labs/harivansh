@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 75
     env:
-      TARGET_SHA: 5c44865f7c36035000e304efd542ef4abc921310
+      TARGET_SHA: 6132d232a7a41d18f98ec87f0969984e73b0d342
       CARGO_TERM_COLOR: never
     steps:
       - uses: actions/checkout@v4
@@ -125,6 +125,7 @@ jobs:
           check rustfmt cargo fmt --all -- --check
           check strict-clippy cargo clippy --locked --workspace --all-targets -- -D warnings
           check signed-epoch-and-custody cargo test --locked -p noerith-storage --test q03_sqlite_epoch_range
+          check snapshot-materialization-and-receipts cargo test --locked -p noerith-storage --test q03_snapshot_copy_custody
           check storage-regression cargo test --locked -p noerith-storage
           check full-workspace cargo test --locked --workspace
           test "$(git rev-parse HEAD)" = "$TARGET_SHA"
