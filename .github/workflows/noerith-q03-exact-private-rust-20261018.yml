@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 75
     env:
-      TARGET_SHA: 5d396298e56e5760a053b6cc92e9d7d6d6ae0182
+      TARGET_SHA: 57d0d04f2f7fdcd6680f38f67eecc70a41f4906d
       CARGO_TERM_COLOR: never
     steps:
       - uses: actions/checkout@v4
@@ -45,7 +45,7 @@ jobs:
       - name: Export encrypted patch only (not source or logs)
         uses: actions/upload-artifact@v4
         with:
-          name: noerith-q03-rustfmt-cms-5d3962
+          name: noerith-q03-rustfmt-cms-57d0d0
           path: ${{ runner.temp }}/q03-private-rustfmt.cms
           if-no-files-found: error
           retention-days: 1
@@ -192,8 +192,8 @@ jobs:
           # Separate native behavior from the independently observed rustfmt
           # failure. These checks retain every original gate and exact source
           # identity; they do NOT authorize promotion when formatting fails.
-          check storage-library-and-liveness cargo test --locked -p noerith-storage --lib
           check snapshot-materialization-and-receipts cargo test --locked -p noerith-storage --test q03_snapshot_copy_custody
+          check storage-library-and-liveness cargo test --locked -p noerith-storage --lib
           check signed-epoch-and-custody cargo test --locked -p noerith-storage --test q03_sqlite_epoch_range
           check storage-regression cargo test --locked -p noerith-storage
           check full-workspace cargo test --locked --workspace
