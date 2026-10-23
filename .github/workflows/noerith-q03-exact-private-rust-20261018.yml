@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 75
     env:
-      TARGET_SHA: 57d0d04f2f7fdcd6680f38f67eecc70a41f4906d
+      TARGET_SHA: ff9c8432cdb7bd12072c4a9b40409c4bf352196e
       CARGO_TERM_COLOR: never
     steps:
       - uses: actions/checkout@v4
@@ -45,7 +45,7 @@ jobs:
       - name: Export encrypted patch only (not source or logs)
         uses: actions/upload-artifact@v4
         with:
-          name: noerith-q03-rustfmt-cms-57d0d0
+          name: noerith-q03-rustfmt-cms-ff9c84
           path: ${{ runner.temp }}/q03-private-rustfmt.cms
           if-no-files-found: error
           retention-days: 1
@@ -225,7 +225,7 @@ jobs:
         if: ${{ failure() }}
         uses: actions/upload-artifact@v4
         with:
-          name: noerith-q03-diagnostics-cms-21578e
+          name: noerith-q03-diagnostics-cms-ff9c84
           path: ${{ runner.temp }}/noerith-q03-private-diagnostics.cms
           if-no-files-found: error
           retention-days: 1
