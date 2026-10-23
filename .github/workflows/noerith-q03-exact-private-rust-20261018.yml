@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 75
     env:
-      TARGET_SHA: fa7f06f74a290b61baf09d3be34948b47baaabc0
+      TARGET_SHA: 592c45d375143ebad3ed4fd611c7ae7105f890df
       CARGO_TERM_COLOR: never
     steps:
       - uses: actions/checkout@v4
@@ -200,6 +200,7 @@ jobs:
           check restore-maintenance-fence cargo test --locked -p noerith-storage --test q03_storage q03_restore_maintenance_fence_requires_all_localstore_handles_to_exit
           check restore-live-handle cargo test --locked -p noerith-storage --test q03_storage q03_restore_must_not_replace_protected_db_while_an_existing_store_handle_is_live
           check restore-offline-compat cargo test --locked -p noerith-storage --test q03_storage q03_restored_staging_bytes_commit_without_temp_or_stale_journal
+          check restore-source-hardlink-alias cargo test --locked -p noerith-storage --test q03_storage q03_restore_rejects_hardlink_alias_to_live_database
           check storage-regression cargo test --locked -p noerith-storage
           check full-workspace cargo test --locked --workspace
           check strict-clippy cargo clippy --locked --workspace --all-targets -- -D warnings
