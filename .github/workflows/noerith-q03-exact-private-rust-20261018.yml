@@ -107,6 +107,34 @@ jobs:
                 echo "Q03_DIAG_$label=RUST_COMPILATION"
               elif grep -Fq 'test result: FAILED' "$LOGDIR/$label.log"; then
                 echo "Q03_DIAG_$label=TEST_ASSERTION"
+                if test "$label" = storage-library-and-liveness; then
+                  Q03_PRIVATE_LOG="$LOGDIR/$label.log" Q03_PRIVATE_SOURCE="$ROOT/crates/noerith-storage/src/engine.rs" python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+          src = Path(os.environ["Q03_PRIVATE_SOURCE"]).read_text(encoding="utf-8")
+          log = Path(os.environ["Q03_PRIVATE_LOG"]).read_text(encoding="utf-8", errors="replace")
+          declared = re.findall(r"(?m)^\s*#\[test\]\s*\n\s*fn\s+([A-Za-z0-9_]+)\s*\(", src)
+          failed = re.findall(r"(?m)^test\s+([A-Za-z0-9_:]+)\s+\.\.\.\s+FAILED$", log)
+          engine_ordinals = sorted({declared.index(name) + 1 for test in failed
+                                    for name in [test.rsplit("::", 1)[-1]] if name in declared})
+          print("Q03_LIB_FAILED_TOTAL=" + str(len(failed)))
+          print("Q03_LIB_ENGINE_DECLARED_TESTS=" + str(len(declared)))
+          print("Q03_LIB_FAILED_ENGINE_ORDINALS=" + ",".join(map(str, engine_ordinals[:32])))
+          print("Q03_LIB_FAILED_OTHER_TESTS=" + str(max(0, len(failed) - len(engine_ordinals))))
+          lines = list(dict.fromkeys(re.findall(r"engine\.rs:(\d+):\d+", log)))
+          print("Q03_LIB_SAFE_ENGINE_SOURCE_LINES=" + ",".join(lines[:16]))
+          causes = [name for name, hit in (
+              ("SQLITE_LOCK", "database is locked" in log),
+              ("SQLITE_CONSTRAINT", "constraint failed" in log),
+              ("ASSERTION", "assertion failed" in log),
+              ("PANIC_UNWRAP", "called `Result::unwrap()` on an `Err`" in log),
+              ("THREAD_PANIC", "thread '" in log),
+              ("TEST_TIMEOUT", "timed out" in log),
+          ) if hit]
+          print("Q03_LIB_PANIC_CLASSES=" + ",".join(causes or ["OTHER"]))
+          PY
+                fi
                 if test "$label" = signed-epoch-and-custody; then
                   Q03_PRIVATE_LOG="$LOGDIR/$label.log" Q03_PRIVATE_SOURCE="$ROOT/crates/noerith-storage/tests/q03_sqlite_epoch_range.rs" python3 - <<'PY'
           import os
