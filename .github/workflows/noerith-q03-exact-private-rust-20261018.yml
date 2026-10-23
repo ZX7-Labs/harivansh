@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 75
     env:
-      TARGET_SHA: 592c45d375143ebad3ed4fd611c7ae7105f890df
+      TARGET_SHA: 55f48104a84610e45045748115efa6a82b4942e3
       CARGO_TERM_COLOR: never
     steps:
       - uses: actions/checkout@v4
@@ -192,6 +192,7 @@ jobs:
           # Separate native behavior from the independently observed rustfmt
           # failure. These checks retain every original gate and exact source
           # identity; they do NOT authorize promotion when formatting fails.
+          check backup-readonly-candidate cargo test --locked -p noerith-storage --lib restore_candidate::tests
           check snapshot-materialization-and-receipts cargo test --locked -p noerith-storage --test q03_snapshot_copy_custody
           check storage-library-and-liveness cargo test --locked -p noerith-storage --lib
           check signed-epoch-and-custody cargo test --locked -p noerith-storage --test q03_sqlite_epoch_range
