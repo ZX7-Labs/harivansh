@@ -195,6 +195,7 @@ jobs:
           check backup-readonly-candidate cargo test --locked -p noerith-storage --lib restore_candidate::tests
           check snapshot-materialization-and-receipts cargo test --locked -p noerith-storage --test q03_snapshot_copy_custody
           check storage-library-and-liveness cargo test --locked -p noerith-storage --lib
+          check candidate-rustfmt rustfmt --edition 2024 --check crates/noerith-storage/src/restore_candidate.rs
           check signed-epoch-and-custody cargo test --locked -p noerith-storage --test q03_sqlite_epoch_range
           check preopen-restore-barrier cargo test --locked -p noerith-storage --test q03_storage q03_open_
           check journal-hardlink-denial cargo test --locked -p noerith-storage --test q03_storage q03_restore_rejects_multiply_linked_wal_before_first_journal_unlink
