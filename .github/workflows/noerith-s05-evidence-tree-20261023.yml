@@ -1,0 +1,59 @@
+name: NOERITH S05 exact private evidence-tree self-tests
+
+on:
+  push:
+    branches: [build/noerith-private-verify-20260923]
+    paths: [.github/workflows/noerith-s05-evidence-tree-20261023.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  s05-private-python:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      TARGET_SHA: 5b8a5c15cfa59369a1a2cd10853eee53a1f39ef6
+    steps:
+      - name: Checkout source-free control only
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify unchanged relay privacy contract
+        run: bash tests/test-noerith-relay-contract.sh
+      - name: Ephemeral exact read-only private checkout
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
+        run: bash scripts/checkout-noerith-private.sh
+      - name: Exact private S05 evidence validation self-tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          LOG="$RUNNER_TEMP/noerith-s05-evidence-tree-selftest.log"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          cd "$ROOT"
+          if python3 tools/verify_linux_oci_sandbox.py --self-test-only >"$LOG" 2>&1; then
+            python3 - "$LOG" <<'PY'
+          import re,sys,pathlib
+          data=pathlib.Path(sys.argv[1]).read_text(errors="replace")
+          m=re.search(r"Ran\s+(\d+)\s+tests?", data)
+          if not m or not re.search(r"(?m)^OK(?:\s|$)",data):
+              raise SystemExit("S05_EXACT_SELFTEST_EVIDENCE_INCOMPLETE")
+          print("S05_EXACT_SELFTEST=PASS")
+          print("S05_EXACT_SELFTEST_COUNT="+m.group(1))
+          PY
+          else
+            python3 - "$LOG" <<'PY'
+          import re,sys,pathlib
+          data=pathlib.Path(sys.argv[1]).read_text(errors="replace")
+          m=re.search(r"Ran\s+(\d+)\s+tests?",data)
+          print("S05_EXACT_SELFTEST=FAIL")
+          print("S05_EXACT_SELFTEST_COUNT="+(m.group(1) if m else "UNKNOWN"))
+          print("S05_EXACT_FAILURE_COUNT="+str(len(re.findall(r"(?m)^FAIL:",data))))
+          print("S05_EXACT_ERROR_COUNT="+str(len(re.findall(r"(?m)^ERROR:",data))))
+          PY
+            exit 1
+          fi
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git diff --exit-code --quiet
