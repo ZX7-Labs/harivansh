@@ -22,6 +22,33 @@ jobs:
         env:
           PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
         run: bash scripts/checkout-noerith-private.sh
+      - name: Encrypt source-private exact-rustfmt patch for local qualification
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          PATCH="$RUNNER_TEMP/q03-private-rustfmt.patch"
+          CIPHERTEXT="$RUNNER_TEMP/q03-private-rustfmt.cms"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --component rustfmt --no-self-update >"$RUNNER_TEMP/q03-fmt-bootstrap.log" 2>&1
+          cd "$ROOT"
+          RUSTUP_TOOLCHAIN=1.98.1 cargo fmt --all >"$RUNNER_TEMP/q03-fmt-local.log" 2>&1
+          git diff --binary HEAD -- > "$PATCH"
+          test -s "$PATCH"
+          openssl cms -encrypt -aes-256-gcm -binary -in "$PATCH" -out "$CIPHERTEXT" -outform DER "$GITHUB_WORKSPACE/certs/noerith-q03-rustfmt-20261023.pem" 2>"$RUNNER_TEMP/q03-cms.log"
+          test -s "$CIPHERTEXT"
+          git restore --source=HEAD --worktree .
+          git diff --exit-code --quiet
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          echo "Q03_EXACT_SHA_RESTORED=YES"
+          echo "Q03_FORMAT_PATCH_CIPHERTEXT_ONLY=READY"
+      - name: Export encrypted patch only (not source or logs)
+        uses: actions/upload-artifact@v4
+        with:
+          name: noerith-q03-rustfmt-cms-2073148
+          path: ${{ runner.temp }}/q03-private-rustfmt.cms
+          if-no-files-found: error
+          retention-days: 1
       - name: Run exact private Rust tests without disclosing source logs
         shell: bash
         run: |
