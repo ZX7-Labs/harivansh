@@ -122,12 +122,16 @@ jobs:
           check toolchain rustup toolchain install 1.98.1 --profile minimal --component clippy --component rustfmt --no-self-update
           export RUSTUP_TOOLCHAIN=1.98.1
           cd "$ROOT"
-          check rustfmt cargo fmt --all -- --check
-          check strict-clippy cargo clippy --locked --workspace --all-targets -- -D warnings
-          check signed-epoch-and-custody cargo test --locked -p noerith-storage --test q03_sqlite_epoch_range
+          # Separate native behavior from the independently observed rustfmt
+          # failure. These checks retain every original gate and exact source
+          # identity; they do NOT authorize promotion when formatting fails.
+          check storage-library-and-liveness cargo test --locked -p noerith-storage --lib
           check snapshot-materialization-and-receipts cargo test --locked -p noerith-storage --test q03_snapshot_copy_custody
+          check signed-epoch-and-custody cargo test --locked -p noerith-storage --test q03_sqlite_epoch_range
           check storage-regression cargo test --locked -p noerith-storage
           check full-workspace cargo test --locked --workspace
+          check strict-clippy cargo clippy --locked --workspace --all-targets -- -D warnings
+          check rustfmt cargo fmt --all -- --check
           test "$(git rev-parse HEAD)" = "$TARGET_SHA"
           git diff --quiet --exit-code
           echo "Q03_EXACT_PRIVATE_SOURCE_ALL_GATES=PASS"
