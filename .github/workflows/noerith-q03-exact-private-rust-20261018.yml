@@ -6,11 +6,11 @@ on:
 permissions:
   contents: read
 jobs:
-  q03-exact-private-source:
+  exact-private-source:
     runs-on: ubuntu-24.04
     timeout-minutes: 75
     env:
-      TARGET_SHA: 55f48104a84610e45045748115efa6a82b4942e3
+      TARGET_SHA: 7c419123e4693cea31f9a567f7e5dfa663292a95
       CARGO_TERM_COLOR: never
     steps:
       - uses: actions/checkout@v4
@@ -22,218 +22,70 @@ jobs:
         env:
           PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
         run: bash scripts/checkout-noerith-private.sh
-      - name: Encrypt source-private exact-rustfmt patch for local qualification
+      - name: Execute exact candidate gates with private diagnostics
         shell: bash
         run: |
           set -euo pipefail
           ROOT="$RUNNER_TEMP/noerith-private-source"
-          PATCH="$RUNNER_TEMP/q03-private-rustfmt.patch"
-          CIPHERTEXT="$RUNNER_TEMP/q03-private-rustfmt.cms"
-          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
-          rustup toolchain install 1.98.1 --profile minimal --component rustfmt --no-self-update >"$RUNNER_TEMP/q03-fmt-bootstrap.log" 2>&1
-          cd "$ROOT"
-          RUSTUP_TOOLCHAIN=1.98.1 cargo fmt --all >"$RUNNER_TEMP/q03-fmt-local.log" 2>&1
-          git diff --binary HEAD -- > "$PATCH"
-          test -s "$PATCH"
-          openssl cms -encrypt -aes-256-gcm -binary -in "$PATCH" -out "$CIPHERTEXT" -outform DER "$GITHUB_WORKSPACE/certs/noerith-q03-rustfmt-20261023.pem" 2>"$RUNNER_TEMP/q03-cms.log"
-          test -s "$CIPHERTEXT"
-          git restore --source=HEAD --worktree .
-          git diff --exit-code --quiet
-          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
-          echo "Q03_EXACT_SHA_RESTORED=YES"
-          echo "Q03_FORMAT_PATCH_CIPHERTEXT_ONLY=READY"
-      - name: Export encrypted patch only (not source or logs)
-        uses: actions/upload-artifact@v4
-        with:
-          name: noerith-q03-rustfmt-cms-ff9c84
-          path: ${{ runner.temp }}/q03-private-rustfmt.cms
-          if-no-files-found: error
-          retention-days: 1
-      - name: Run exact private Rust tests without disclosing source logs
-        shell: bash
-        run: |
-          set -euo pipefail
-          ROOT="$RUNNER_TEMP/noerith-private-source"
-          LOGDIR="$RUNNER_TEMP/noerith-q03-private-logs"
+          LOGDIR="$RUNNER_TEMP/noerith-consolidation-logs"
           mkdir -m 700 -p "$LOGDIR"
           test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          if ! rustup toolchain install 1.98.1 --profile minimal --component clippy --component rustfmt --no-self-update >"$LOGDIR/bootstrap.log" 2>&1; then
+            echo "EXACT_TOOLCHAIN=BLOCKED"
+            exit 1
+          fi
+          export RUSTUP_TOOLCHAIN=1.98.1
+          cd "$ROOT"
+          rustc --version >"$LOGDIR/environment.txt"
+          cargo --version >>"$LOGDIR/environment.txt"
+          git rev-parse HEAD >>"$LOGDIR/environment.txt"
+          status=0
           check() {
             local label="$1"
             shift
             if "$@" >"$LOGDIR/$label.log" 2>&1; then
-              echo "Q03_EXACT_$label=PASS"
+              echo "EXACT_$label=PASS"
+              printf '%s PASS\n' "$label" >>"$LOGDIR/results.txt"
             else
-              echo "Q03_EXACT_$label=FAIL"
-              # Private log stays on the ephemeral runner. Release only
-              # authenticated ciphertext encrypted to the owner's offline key.
-              if test "$(wc -c <"$LOGDIR/$label.log")" -le 4194304; then
-                openssl cms -encrypt -aes-256-gcm -binary \
-                  -in "$LOGDIR/$label.log" \
-                  -out "$RUNNER_TEMP/noerith-q03-private-failure.cms" \
-                  -outform DER "$GITHUB_WORKSPACE/certs/noerith-q03-rustfmt-20261023.pem" \
-                  >"$LOGDIR/cms-diagnostic.log" 2>&1
-                echo "Q03_PRIVATE_ENCRYPTED_FAILURE_DIAGNOSTIC=READY"
-              else
-                echo "Q03_PRIVATE_DIAGNOSTIC_OVER_BOUND=DENIED"
-              fi
-              if test "$label" = rustfmt; then
-                Q03_PRIVATE_LOG="$LOGDIR/$label.log" python3 - <<'PY'
-          import os
-          from pathlib import Path
-          import re
-          log = Path(os.environ["Q03_PRIVATE_LOG"]).read_text(encoding="utf-8", errors="replace")
-          hunks = re.findall(r"(?m)^Diff in ([^:\n]+\.rs):(\d+):", log)
-          roles = []
-          for path, line in hunks:
-              if path.endswith("q03_sqlite_epoch_range.rs"):
-                  role = "Q03_TEST"
-              elif path.endswith("noerith-storage/src/engine.rs"):
-                  role = "Q03_ENGINE"
-              else:
-                  role = "OTHER_RUST_FILE"
-              roles.append(role + "@" + line)
-          print("Q03_FMT_HUNK_COUNT=" + str(len(roles)))
-          print("Q03_FMT_SAFE_COORDINATES=" + ",".join(roles[:80]))
-          PY
-              fi
-              if test "$label" = strict-clippy; then
-                Q03_PRIVATE_LOG="$LOGDIR/$label.log" python3 - <<'PY'
-          import os
-          from pathlib import Path
-          import re
-          log = Path(os.environ["Q03_PRIVATE_LOG"]).read_text(encoding="utf-8", errors="replace")
-          lints = sorted(set(re.findall(r"-D (clippy::[a-z0-9_]+)", log)))
-          locations = re.findall(r"(?m)^\s*-->\s+([^:\n]+\.rs):(\d+):(\d+)", log)
-          safe_sites = []
-          for filename, line, _ in locations[:16]:
-              role = "Q03_TEST_SOURCE" if filename.endswith("q03_sqlite_epoch_range.rs") else "OTHER_RUST_SOURCE"
-              safe_sites.append(role + "@" + line)
-          print("Q03_CLIPPY_ERROR_COUNT=" + str(len(re.findall(r"(?m)^error(?:\[E\d+\])?:", log))))
-          print("Q03_CLIPPY_LINT_TYPES=" + ",".join(lints))
-          print("Q03_CLIPPY_SAFE_SITES=" + ",".join(safe_sites))
-          PY
-              fi
-              if grep -Eq 'error: no test target named|error: package ID specification' "$LOGDIR/$label.log"; then
-                echo "Q03_DIAG_$label=TARGET_SELECTION"
-              elif grep -Eq 'error\\[E[0-9]+\\]|error: could not compile|error: expected|error: unresolved import' "$LOGDIR/$label.log"; then
-                echo "Q03_DIAG_$label=RUST_COMPILATION"
-              elif grep -Fq 'test result: FAILED' "$LOGDIR/$label.log"; then
-                echo "Q03_DIAG_$label=TEST_ASSERTION"
-                if test "$label" = storage-library-and-liveness; then
-                  Q03_PRIVATE_LOG="$LOGDIR/$label.log" Q03_PRIVATE_SOURCE="$ROOT/crates/noerith-storage/src/engine.rs" python3 - <<'PY'
-          import os
-          import re
-          from pathlib import Path
-          src = Path(os.environ["Q03_PRIVATE_SOURCE"]).read_text(encoding="utf-8")
-          log = Path(os.environ["Q03_PRIVATE_LOG"]).read_text(encoding="utf-8", errors="replace")
-          declared = re.findall(r"(?m)^\s*#\[test\]\s*\n\s*fn\s+([A-Za-z0-9_]+)\s*\(", src)
-          failed = re.findall(r"(?m)^test\s+([A-Za-z0-9_:]+)\s+\.\.\.\s+FAILED$", log)
-          engine_ordinals = sorted({declared.index(name) + 1 for test in failed
-                                    for name in [test.rsplit("::", 1)[-1]] if name in declared})
-          print("Q03_LIB_FAILED_TOTAL=" + str(len(failed)))
-          print("Q03_LIB_ENGINE_DECLARED_TESTS=" + str(len(declared)))
-          print("Q03_LIB_FAILED_ENGINE_ORDINALS=" + ",".join(map(str, engine_ordinals[:32])))
-          print("Q03_LIB_FAILED_OTHER_TESTS=" + str(max(0, len(failed) - len(engine_ordinals))))
-          lines = list(dict.fromkeys(re.findall(r"engine\.rs:(\d+):\d+", log)))
-          print("Q03_LIB_SAFE_ENGINE_SOURCE_LINES=" + ",".join(lines[:16]))
-          causes = [name for name, hit in (
-              ("SQLITE_LOCK", "database is locked" in log),
-              ("SQLITE_CONSTRAINT", "constraint failed" in log),
-              ("ASSERTION", "assertion failed" in log),
-              ("PANIC_UNWRAP", "called `Result::unwrap()` on an `Err`" in log),
-              ("THREAD_PANIC", "thread '" in log),
-              ("TEST_TIMEOUT", "timed out" in log),
-          ) if hit]
-          print("Q03_LIB_PANIC_CLASSES=" + ",".join(causes or ["OTHER"]))
-          PY
-                fi
-                if test "$label" = signed-epoch-and-custody; then
-                  Q03_PRIVATE_LOG="$LOGDIR/$label.log" Q03_PRIVATE_SOURCE="$ROOT/crates/noerith-storage/tests/q03_sqlite_epoch_range.rs" python3 - <<'PY'
-          import os
-          from pathlib import Path
-          import re
-          source = Path(os.environ["Q03_PRIVATE_SOURCE"]).read_text(encoding="utf-8")
-          log = Path(os.environ["Q03_PRIVATE_LOG"]).read_text(encoding="utf-8", errors="replace")
-          declared = re.findall(r"(?m)^#\[test\]\s*\nfn\s+([A-Za-z0-9_]+)\(", source)
-          failures = re.findall(r"(?m)^test ([A-Za-z0-9_]+) \.\.\. FAILED$", log)
-          positions = [declared.index(name) + 1 for name in failures if name in declared]
-          print("Q03_DIAG_DECLARED_TESTS=" + str(len(declared)))
-          print("Q03_DIAG_FAILED_ASSERTION_COUNT=" + str(len(failures)))
-          print("Q03_DIAG_FAILED_TEST_ORDINALS=" + ",".join(map(str, sorted(positions))))
-          print("Q03_DIAG_MAPPED_FAILURES=" + str(len(positions)))
-          locations = re.findall(r"q03_sqlite_epoch_range\.rs:(\d+):(\d+)", log)
-          print("Q03_DIAG_PANIC_SOURCE_LINES=" + ",".join(dict.fromkeys(line for line, _ in locations)))
-          if "FOREIGN KEY constraint failed" in log:
-              category = "FOREIGN_KEY_FIXTURE_REJECTED"
-          elif "CHECK constraint failed" in log:
-              category = "SQLITE_CHECK_FIXTURE_REJECTED"
-          elif "called `Result::unwrap()` on an `Err`" in log:
-              category = "UNWRAP_ERROR_OTHER"
-          elif "assertion failed" in log:
-              category = "RUST_ASSERTION_FALSE"
-          else:
-              category = "OTHER_PRIVATE_TEST_PANIC"
-          print("Q03_DIAG_ASSERTION_CAUSE_CLASS=" + category)
-          PY
-                fi
-              elif grep -Eq 'failed to download|failed to select a version|failed to get|failed to load source|checksum failed|lock file' "$LOGDIR/$label.log"; then
-                echo "Q03_DIAG_$label=DEPENDENCY_OR_LOCK"
-              elif grep -Eq 'panicked|SIGSEGV|signal: [0-9]+|timed out' "$LOGDIR/$label.log"; then
-                echo "Q03_DIAG_$label=RUNTIME_OR_TIMEOUT"
-              else
-                echo "Q03_DIAG_$label=UNCLASSIFIED_REQUIRES_PRIVATE_INSPECTION"
-              fi
-              exit 1
+              echo "EXACT_$label=FAIL"
+              printf '%s FAIL\n' "$label" >>"$LOGDIR/results.txt"
+              status=1
             fi
           }
-          check toolchain rustup toolchain install 1.98.1 --profile minimal --component clippy --component rustfmt --no-self-update
-          export RUSTUP_TOOLCHAIN=1.98.1
-          cd "$ROOT"
-          # Separate native behavior from the independently observed rustfmt
-          # failure. These checks retain every original gate and exact source
-          # identity; they do NOT authorize promotion when formatting fails.
-          check backup-readonly-candidate cargo test --locked -p noerith-storage --lib restore_candidate::tests
-          check snapshot-materialization-and-receipts cargo test --locked -p noerith-storage --test q03_snapshot_copy_custody
-          check storage-library-and-liveness cargo test --locked -p noerith-storage --lib
-          check candidate-rustfmt rustfmt --edition 2024 --check crates/noerith-storage/src/restore_candidate.rs
-          check signed-epoch-and-custody cargo test --locked -p noerith-storage --test q03_sqlite_epoch_range
-          check preopen-restore-barrier cargo test --locked -p noerith-storage --test q03_storage q03_open_
-          check journal-hardlink-denial cargo test --locked -p noerith-storage --test q03_storage q03_restore_rejects_multiply_linked_wal_before_first_journal_unlink
-          check restore-maintenance-fence cargo test --locked -p noerith-storage --test q03_storage q03_restore_maintenance_fence_requires_all_localstore_handles_to_exit
-          check restore-live-handle cargo test --locked -p noerith-storage --test q03_storage q03_restore_must_not_replace_protected_db_while_an_existing_store_handle_is_live
-          check restore-offline-compat cargo test --locked -p noerith-storage --test q03_storage q03_restored_staging_bytes_commit_without_temp_or_stale_journal
-          check restore-source-hardlink-alias cargo test --locked -p noerith-storage --test q03_storage q03_restore_rejects_hardlink_alias_to_live_database
-          check storage-regression cargo test --locked -p noerith-storage
-          check full-workspace cargo test --locked --workspace
+          check workspace-tests cargo test --locked --workspace
           check strict-clippy cargo clippy --locked --workspace --all-targets -- -D warnings
           check rustfmt cargo fmt --all -- --check
+          check isolated-q06 python3 tools/verify_isolated_std_crate.py crates/noerith-q06-eval
+          check source-contracts python3 tools/verify_spec.py
+          check dependency-boundaries python3 tools/verify_dependency_boundaries.py
+          git diff --exit-code --quiet
+          # Export formatter changes only as authenticated ciphertext.
+          cargo fmt --all >"$LOGDIR/format-generation.log" 2>&1
+          git diff --binary HEAD -- >"$LOGDIR/rustfmt.patch"
+          git restore --source=HEAD --worktree .
+          git diff --exit-code --quiet
           test "$(git rev-parse HEAD)" = "$TARGET_SHA"
-          git diff --quiet --exit-code
-          echo "Q03_EXACT_PRIVATE_SOURCE_ALL_GATES=PASS"
-      - name: Export encrypted private failure diagnostics only
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: noerith-q03-encrypted-native-failure
-          path: ${{ runner.temp }}/noerith-q03-private-failure.cms
-          if-no-files-found: ignore
-          retention-days: 1
-      - name: Encrypt exact private diagnostics after native gate result
-        if: ${{ failure() }}
+          printf '%s\n' "$status" >"$LOGDIR/exit-status.txt"
+          test "$status" -eq 0
+      - name: Encrypt diagnostics without releasing private logs
+        if: always()
         shell: bash
         run: |
           set -euo pipefail
-          LOGDIR="$RUNNER_TEMP/noerith-q03-private-logs"
+          LOGDIR="$RUNNER_TEMP/noerith-consolidation-logs"
           test -d "$LOGDIR"
-          tar -C "$LOGDIR" -cf "$RUNNER_TEMP/noerith-q03-private-diagnostics.tar" .
-          openssl cms -encrypt -aes-256-gcm -binary -in "$RUNNER_TEMP/noerith-q03-private-diagnostics.tar" -out "$RUNNER_TEMP/noerith-q03-private-diagnostics.cms" -outform DER "$GITHUB_WORKSPACE/certs/noerith-q03-rustfmt-20261023.pem" 2>"$RUNNER_TEMP/noerith-cms-diagnostics.log"
-          test -s "$RUNNER_TEMP/noerith-q03-private-diagnostics.cms"
-          echo "Q03_NATIVE_DIAGNOSTICS_ENCRYPTED=YES"
-      - name: Export ciphertext diagnostics only (no private logs)
-        if: ${{ failure() }}
+          tar -C "$LOGDIR" -cf "$RUNNER_TEMP/consolidation-diagnostics.tar" .
+          openssl cms -encrypt -aes-256-gcm -binary -in "$RUNNER_TEMP/consolidation-diagnostics.tar" -out "$RUNNER_TEMP/consolidation-diagnostics.cms" -outform DER "$GITHUB_WORKSPACE/certs/noerith-consolidation-20261025.pem" >"$RUNNER_TEMP/encryption.log" 2>&1
+          test -s "$RUNNER_TEMP/consolidation-diagnostics.cms"
+          echo "PRIVATE_DIAGNOSTICS_CIPHERTEXT=READY"
+      - name: Export ciphertext only
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: noerith-q03-diagnostics-cms-ff9c84
-          path: ${{ runner.temp }}/noerith-q03-private-diagnostics.cms
+          name: noerith-consolidation-encrypted-diagnostics
+          path: ${{ runner.temp }}/consolidation-diagnostics.cms
           if-no-files-found: error
           retention-days: 1
+      - name: Remove ephemeral private checkout and plaintext
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/noerith-private-source" "$RUNNER_TEMP/noerith-consolidation-logs" "$RUNNER_TEMP/consolidation-diagnostics.tar"
