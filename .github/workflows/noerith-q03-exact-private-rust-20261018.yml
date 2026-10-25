@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 75
     env:
-      TARGET_SHA: 04d7d5f30ec5a4a28807f51b984d2c305e3dfa35
+      TARGET_SHA: 65e10c3806bf4b4e62609a573b3818ebb67e062f
       CARGO_TERM_COLOR: never
     steps:
       - uses: actions/checkout@v4
@@ -21,7 +21,15 @@ jobs:
       - name: Read-only ephemeral exact private checkout
         env:
           PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
-        run: bash scripts/checkout-noerith-private.sh
+        run: |
+          set -euo pipefail
+          bash scripts/checkout-noerith-private.sh
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_READ_TOKEN" | base64 | tr -d '\n')"
+          GIT_TERMINAL_PROMPT=0 git -C "$ROOT" -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" fetch -q --unshallow --no-tags "https://github.com/oyzitjfzj/NOERITH.git" '+refs/heads/*:refs/heads/*' >"$RUNNER_TEMP/private-allrefs-access.log" 2>&1
+          unset PRIVATE_READ_TOKEN auth
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          echo "PRIVATE_FULL_REF_FETCH=READY"
       - name: Execute exact candidate gates with private diagnostics
         shell: bash
         run: |
@@ -52,10 +60,28 @@ jobs:
               status=1
             fi
           }
+          check original-ref-custody python3 tools/verify_109_branch_custody.py --repo .
+          check consolidation-lanes python3 tools/verify_consolidation_lanes.py --repo .
+          check original-tip-archive python3 tools/verify_branch_tip_archive.py --repo .
+          check all-original-tip-variants python3 tools/verify_all_tip_variants.py --repo . --check handoff/consolidation/ALL_ORIGINAL_TIP_VARIANTS_2026-10-25.json --verify-git-trees --write-current-disposition "$LOGDIR/current-disposition.json" --write-custody-report "$LOGDIR/current-original-blob-custody.json"
+          check custody-negative-tests python3 -m unittest discover -s tools -p 'test_verify_*.py'
+          check all-variant-negative-tests python3 -m unittest discover -s tools/tests -p test_verify_all_tip_variants.py
+          check q06-helper-negative-tests python3 -m unittest discover -s tools/tests -p test_q06_verifier_integration.py
+          check workspace-tests cargo test --locked --workspace --no-fail-fast
+          check strict-clippy cargo clippy --locked --workspace --all-targets -- -D warnings
           check rustfmt cargo fmt --all -- --check
+          check isolated-q06 python3 tools/verify_isolated_pinned_crate_hermetic.py tools/q06-memory-context-eval
+          check isolated-capabilities python3 tools/verify_isolated_pinned_crate_hermetic.py crates/noerith-capabilities
+          check source-contracts python3 tools/verify_spec.py
+          check dependency-boundaries python3 tools/verify_dependency_boundaries.py
+          git diff --exit-code --quiet
+          check q03-restore-admission cargo test --locked -p noerith-storage --test q03_storage q03_restore_rejects_nonzero_unauthenticated_candidate_without_losing_current_state -- --exact
+          check restore-callers rg -n replace_protected_database_from_backup crates
+          check ci-wiring python3 -m unittest discover -s tools/tests -p test_ci_critical_python_wiring.py
           git diff --exit-code --quiet
           # Export formatter changes only as authenticated ciphertext.
           cargo fmt --all >"$LOGDIR/format-generation.log" 2>&1
+          cargo fmt --manifest-path tools/q06-memory-context-eval/Cargo.toml >>"$LOGDIR/format-generation.log" 2>&1
           git diff --binary HEAD -- >"$LOGDIR/rustfmt.patch"
           git restore --source=HEAD --worktree .
           git diff --exit-code --quiet
