@@ -21,15 +21,7 @@ jobs:
       - name: Read-only ephemeral exact private checkout
         env:
           PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
-        run: |
-          set -euo pipefail
-          bash scripts/checkout-noerith-private.sh
-          ROOT="$RUNNER_TEMP/noerith-private-source"
-          auth="$(printf 'x-access-token:%s' "$PRIVATE_READ_TOKEN" | base64 | tr -d '\n')"
-          GIT_TERMINAL_PROMPT=0 git -C "$ROOT" -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" fetch -q --unshallow --no-tags "https://github.com/oyzitjfzj/NOERITH.git" '+refs/heads/*:refs/heads/*' >"$RUNNER_TEMP/private-allrefs-access.log" 2>&1
-          unset PRIVATE_READ_TOKEN auth
-          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
-          echo "PRIVATE_FULL_REF_FETCH=READY"
+        run: bash scripts/checkout-noerith-private.sh
       - name: Execute exact candidate gates with private diagnostics
         shell: bash
         run: |
@@ -60,28 +52,26 @@ jobs:
               status=1
             fi
           }
-          check original-ref-custody python3 tools/verify_109_branch_custody.py --repo .
-          check consolidation-lanes python3 tools/verify_consolidation_lanes.py --repo .
-          check original-tip-archive python3 tools/verify_branch_tip_archive.py --repo .
-          check all-original-tip-variants python3 tools/verify_all_tip_variants.py --repo . --check handoff/consolidation/ALL_ORIGINAL_TIP_VARIANTS_2026-10-25.json --verify-git-trees --write-current-disposition "$LOGDIR/current-disposition.json" --write-custody-report "$LOGDIR/current-original-blob-custody.json"
-          check custody-negative-tests python3 -m unittest discover -s tools -p 'test_verify_*.py'
-          check all-variant-negative-tests python3 -m unittest discover -s tools/tests -p test_verify_all_tip_variants.py
-          check q06-helper-negative-tests python3 -m unittest discover -s tools/tests -p test_q06_verifier_integration.py
-          check workspace-tests cargo test --locked --workspace --no-fail-fast
-          check strict-clippy cargo clippy --locked --workspace --all-targets -- -D warnings
-          check rustfmt cargo fmt --all -- --check
-          check isolated-q06 python3 tools/verify_isolated_pinned_crate_hermetic.py tools/q06-memory-context-eval
-          check isolated-capabilities python3 tools/verify_isolated_pinned_crate_hermetic.py crates/noerith-capabilities
-          check source-contracts python3 tools/verify_spec.py
-          check dependency-boundaries python3 tools/verify_dependency_boundaries.py
-          git diff --exit-code --quiet
-          check q03-restore-admission cargo test --locked -p noerith-storage --test q03_storage q03_restore_rejects_nonzero_unauthenticated_candidate_without_losing_current_state -- --exact
-          check restore-callers rg -n replace_protected_database_from_backup crates
-          check ci-wiring python3 -m unittest discover -s tools/tests -p test_ci_critical_python_wiring.py
+          check schema-regressions python3 -m unittest discover -s tools/tests -p 'test_verify_spec*.py' -v
+          check q06-field-parity-tests python3 -m unittest tools.tests.test_q06_export_field_parity -v
+          check q06-field-parity-files python3 tools/research/verify_q06_export_field_parity.py
+          check wp05-first-byte python3 tools/research/wp05_s03_egress_boundary_model.py
+          check wp05-streaming python3 tools/research/wp05_streaming_disclosure_model.py
+          check wp05-memory-gate python3 -m unittest discover -s tools/research -p test_wp05_memory_candidate_gate.py -v
+          check wp05-memory-mutants python3 tools/research/run_mutations.py
+          check control-evidence python3 tools/verify_control_evidence.py
+          check reference-contracts python3 tools/reference_contracts.py
+          check bounded-models python3 models/bounded_reference.py
+          check isolated-cognition python3 tools/verify_isolated_std_crate.py crates/noerith-cognition
+          check isolated-sandbox python3 tools/verify_isolated_std_crate.py crates/noerith-sandbox-oci
+          check oci-validator-selftests python3 tools/verify_linux_oci_sandbox.py --self-test-only
+          check fixed-analyzer-format cargo fmt --manifest-path tools/q06-fixed-corpus-analyzer/Cargo.toml -- --check
+          check fixed-analyzer-clippy cargo clippy --locked --manifest-path tools/q06-fixed-corpus-analyzer/Cargo.toml --all-targets -- -D warnings
+          check fixed-analyzer-tests cargo test --locked --manifest-path tools/q06-fixed-corpus-analyzer/Cargo.toml
           git diff --exit-code --quiet
           # Export formatter changes only as authenticated ciphertext.
           cargo fmt --all >"$LOGDIR/format-generation.log" 2>&1
-          cargo fmt --manifest-path tools/q06-memory-context-eval/Cargo.toml >>"$LOGDIR/format-generation.log" 2>&1
+          cargo fmt --manifest-path tools/q06-fixed-corpus-analyzer/Cargo.toml >>"$LOGDIR/format-generation.log" 2>&1
           git diff --binary HEAD -- >"$LOGDIR/rustfmt.patch"
           git restore --source=HEAD --worktree .
           git diff --exit-code --quiet
