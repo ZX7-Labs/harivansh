@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 75
     env:
-      TARGET_SHA: 8c276dfff093ffd1a81e6eaf24b2609923cc789d
+      TARGET_SHA: e143423e0f64caafed41a115fa44a7caefd911fe
       CARGO_TERM_COLOR: never
     steps:
       - uses: actions/checkout@v4
@@ -58,17 +58,15 @@ jobs:
           for iteration in $(seq 1 20); do
             check "sandbox-repeat-$iteration" python3 tools/verify_isolated_std_crate.py crates/noerith-sandbox-oci
           done
-          test ! -e tools/q06-fixed-corpus-analyzer/Cargo.lock
-          check analyzer-lock-generation cargo generate-lockfile --manifest-path tools/q06-fixed-corpus-analyzer/Cargo.toml
+          test -s tools/q06-fixed-corpus-analyzer/Cargo.lock
           cp tools/q06-fixed-corpus-analyzer/Cargo.lock "$LOGDIR/analyzer-Cargo.lock"
           check fixed-analyzer-format cargo fmt --manifest-path tools/q06-fixed-corpus-analyzer/Cargo.toml -- --check
           check fixed-analyzer-clippy cargo clippy --locked --manifest-path tools/q06-fixed-corpus-analyzer/Cargo.toml --all-targets -- -D warnings
           check fixed-analyzer-tests cargo test --locked --manifest-path tools/q06-fixed-corpus-analyzer/Cargo.toml
           check fixed-analyzer-build cargo build --locked --manifest-path tools/q06-fixed-corpus-analyzer/Cargo.toml
-          export NOERITH_Q06_ANALYZER_BIN="$ROOT/tools/q06-fixed-corpus-analyzer/target/debug/q06-fixed-corpus-analyzer"
+          export NOERITH_Q06_ANALYZER_BIN="$ROOT/tools/q06-fixed-corpus-analyzer/target/debug/noerith-q06-fixed-corpus-analyzer"
           check fixed-analyzer-qualifier-tests python3 -m unittest tools.tests.test_q06_fixed_corpus_analyzer_qualification -v
           check fixed-analyzer-independent python3 tools/q06_fixed_corpus_analyzer_qualification.py --analyzer "$NOERITH_Q06_ANALYZER_BIN" --manifest experiments/s05-q06-fixed-corpus-analyzer-qualification.json --source-revision "$TARGET_SHA" --output "$LOGDIR/fixed-analyzer-qualification.json"
-          rm tools/q06-fixed-corpus-analyzer/Cargo.lock
           git diff --exit-code --quiet
           # Export formatter changes only as authenticated ciphertext.
           cargo fmt --all >"$LOGDIR/format-generation.log" 2>&1
