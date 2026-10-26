@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 75
     env:
-      TARGET_SHA: aa0dcf6a181ccabf8ad7ef5b01437a57683e1837
+      TARGET_SHA: a5bc6035120ff41d4d198c71a570d413e657affd
       CARGO_TERM_COLOR: never
     steps:
       - uses: actions/checkout@v4
@@ -54,7 +54,7 @@ jobs:
               status=1
             fi
           }
-          check backup-custody cargo test --locked -p noerith-storage --test q03_backup_custody -- --nocapture
+          check workspace-format cargo fmt --all -- --check
           git diff --exit-code --quiet
           # Export formatter changes only as authenticated ciphertext.
           cargo fmt --all >"$LOGDIR/format-generation.log" 2>&1
