@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 75
     env:
-      TARGET_SHA: c97576bb610d2a6dc2541030df9f5e8d65d116fe
+      TARGET_SHA: 25bbaf0b86910523f76f109e7011e6505e5a9fcb
       CARGO_TERM_COLOR: never
     steps:
       - uses: actions/checkout@v4
@@ -59,6 +59,8 @@ jobs:
           check consolidation-lanes python3 tools/verify_consolidation_lanes.py --repo .
           check original-tip-archive python3 tools/verify_branch_tip_archive.py --repo .
           check all-original-tip-variants python3 tools/verify_all_tip_variants.py --repo . --check handoff/consolidation/ALL_ORIGINAL_TIP_VARIANTS_2026-10-25.json --verify-git-trees --write-current-disposition "$LOGDIR/current-disposition.json" --write-custody-report "$LOGDIR/current-original-blob-custody.json"
+          check status-json python3 -m json.tool handoff/STATUS.json
+          check qualified-source-equality python3 -c 'import subprocess; paths=subprocess.check_output(["git","diff","--name-only","c97576bb610d2a6dc2541030df9f5e8d65d116fe","HEAD"],text=True).splitlines(); allowed={"README.md","handoff/WORK_LOG.md","handoff/CHECKPOINT.md","handoff/STATUS.json","handoff/START_HERE_NEW_CHAT_AUTONOMOUS.md","handoff/consolidation/README.md","handoff/consolidation/QUALIFICATION_2026-10-26.md"}; assert all(p in allowed or p.startswith("handoff/branch-archive/raw-objects/") or p.startswith("handoff/consolidation/proof-2026-10-26/") for p in paths), paths; print("QUALIFIED_EXECUTABLE_INPUTS_UNCHANGED=PASS")'
           git diff --exit-code --quiet
           git diff --binary HEAD -- >"$LOGDIR/rustfmt.patch"
           git restore --source=HEAD --worktree .
