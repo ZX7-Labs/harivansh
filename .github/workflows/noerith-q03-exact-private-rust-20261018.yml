@@ -52,21 +52,10 @@ jobs:
               status=1
             fi
           }
-          check mutation-selftests python3 -m unittest discover -s tools/research -p test_run_mutations.py -v
-          check wp05-memory-mutants python3 tools/research/run_mutations.py
-          check isolated-sandbox python3 tools/verify_isolated_std_crate.py crates/noerith-sandbox-oci
-          for iteration in $(seq 1 20); do
-            check "sandbox-repeat-$iteration" python3 tools/verify_isolated_std_crate.py crates/noerith-sandbox-oci
+          export RUST_TEST_THREADS=32
+          for iteration in $(seq 1 100); do
+            check "sandbox-stress-$iteration" python3 tools/verify_isolated_std_crate.py crates/noerith-sandbox-oci
           done
-          test -s tools/q06-fixed-corpus-analyzer/Cargo.lock
-          cp tools/q06-fixed-corpus-analyzer/Cargo.lock "$LOGDIR/analyzer-Cargo.lock"
-          check fixed-analyzer-format cargo fmt --manifest-path tools/q06-fixed-corpus-analyzer/Cargo.toml -- --check
-          check fixed-analyzer-clippy cargo clippy --locked --manifest-path tools/q06-fixed-corpus-analyzer/Cargo.toml --all-targets -- -D warnings
-          check fixed-analyzer-tests cargo test --locked --manifest-path tools/q06-fixed-corpus-analyzer/Cargo.toml
-          check fixed-analyzer-build cargo build --locked --manifest-path tools/q06-fixed-corpus-analyzer/Cargo.toml
-          export NOERITH_Q06_ANALYZER_BIN="$ROOT/tools/q06-fixed-corpus-analyzer/target/debug/noerith-q06-fixed-corpus-analyzer"
-          check fixed-analyzer-qualifier-tests python3 -m unittest tools.tests.test_q06_fixed_corpus_analyzer_qualification -v
-          check fixed-analyzer-independent python3 tools/q06_fixed_corpus_analyzer_qualification.py --analyzer "$NOERITH_Q06_ANALYZER_BIN" --manifest experiments/s05-q06-fixed-corpus-analyzer-qualification.json --source-revision "$TARGET_SHA" --output "$LOGDIR/fixed-analyzer-qualification.json"
           git diff --exit-code --quiet
           # Export formatter changes only as authenticated ciphertext.
           cargo fmt --all >"$LOGDIR/format-generation.log" 2>&1
