@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 75
     env:
-      TARGET_SHA: aee57babb1079d136fdeb836c86802b3d6a09b16
+      TARGET_SHA: a04eda2ca9d35c6dc69360634cb5f0fa48b35b65
       CARGO_TERM_COLOR: never
     steps:
       - uses: actions/checkout@v4
@@ -55,9 +55,9 @@ jobs:
               status=1
             fi
           }
-          check completed-first-byte-model python3 tools/research/wp05_s03_egress_boundary_model.py
-          check completed-streaming-model python3 tools/research/wp05_streaming_disclosure_model.py
-          check native-input-equality python3 -c 'import subprocess; paths=subprocess.check_output(["git","diff","--name-only","8880b4fd04355fecc1734bb4c78f4da31087ba9b","HEAD"],text=True).splitlines(); assert set(paths)<={"tools/research/wp05_s03_egress_boundary_model.py","tools/research/wp05_streaming_disclosure_model.py",".github/workflows/ci.yml","handoff/VERIFIED_UNITS.json"},paths; print("ALL_PREVIOUSLY_QUALIFIED_EXECUTABLE_INPUTS_UNCHANGED=PASS")'
+          check work-partition python3 handoff/split-proof/verify_partition.py
+          check original-tip-custody python3 tools/verify_branch_tip_archive.py --repo .
+          check all-original-tip-variants python3 tools/verify_all_tip_variants.py --repo . --check handoff/consolidation/ALL_ORIGINAL_TIP_VARIANTS_2026-10-25.json --verify-git-trees --write-current-disposition "$LOGDIR/current-disposition.json" --write-custody-report "$LOGDIR/current-original-blob-custody.json"
           git diff --exit-code --quiet
           git diff --binary HEAD -- >"$LOGDIR/rustfmt.patch"
           git restore --source=HEAD --worktree .
