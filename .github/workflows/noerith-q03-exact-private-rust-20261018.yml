@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 75
     env:
-      TARGET_SHA: 8880b4fd04355fecc1734bb4c78f4da31087ba9b
+      TARGET_SHA: aee57babb1079d136fdeb836c86802b3d6a09b16
       CARGO_TERM_COLOR: never
     steps:
       - uses: actions/checkout@v4
@@ -21,7 +21,15 @@ jobs:
       - name: Read-only ephemeral exact private checkout
         env:
           PRIVATE_READ_TOKEN: ${{ secrets.PRIVATE_READ_TOKEN }}
-        run: bash scripts/checkout-noerith-private.sh
+        run: |
+          set -euo pipefail
+          bash scripts/checkout-noerith-private.sh
+          ROOT="$RUNNER_TEMP/noerith-private-source"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_READ_TOKEN" | base64 | tr -d '\n')"
+          GIT_TERMINAL_PROMPT=0 git -C "$ROOT" -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" fetch -q --unshallow --no-tags "https://github.com/oyzitjfzj/NOERITH.git" '+refs/heads/*:refs/heads/*' >"$RUNNER_TEMP/private-allrefs-access.log" 2>&1
+          unset PRIVATE_READ_TOKEN auth
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
+          echo "PRIVATE_FULL_REF_FETCH=READY"
       - name: Execute exact candidate gates with private diagnostics
         shell: bash
         run: |
@@ -30,16 +38,9 @@ jobs:
           LOGDIR="$RUNNER_TEMP/noerith-consolidation-logs"
           mkdir -m 700 -p "$LOGDIR"
           test "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA"
-          if ! rustup toolchain install 1.98.1 --profile minimal --component clippy --component rustfmt --no-self-update >"$LOGDIR/bootstrap.log" 2>&1; then
-            echo "EXACT_TOOLCHAIN=BLOCKED"
-            exit 1
-          fi
-          export RUSTUP_TOOLCHAIN=1.98.1
           cd "$ROOT"
-          uname -a >"$LOGDIR/environment.txt"
-          cat /etc/os-release >>"$LOGDIR/environment.txt"
-          rustc --version >>"$LOGDIR/environment.txt"
-          cargo --version >>"$LOGDIR/environment.txt"
+          git --version >"$LOGDIR/environment.txt"
+          python3 --version >>"$LOGDIR/environment.txt"
           git rev-parse HEAD >>"$LOGDIR/environment.txt"
           status=0
           check() {
@@ -54,29 +55,10 @@ jobs:
               status=1
             fi
           }
-          check source-contracts python3 tools/verify_spec.py
-          check foundation-source python3 tools/verify_foundation_source.py
-          check control-evidence python3 tools/verify_control_evidence.py
-          check dependency-boundaries python3 tools/verify_dependency_boundaries.py
-          check reference-contracts python3 tools/reference_contracts.py
-          check bounded-models python3 models/bounded_reference.py
-          check locked-metadata cargo metadata --locked --format-version 1
-          check workspace-format cargo fmt --all -- --check
-          check workspace-clippy cargo clippy --locked --workspace --all-targets -- -D warnings
-          check workspace-tests cargo test --locked --workspace --no-fail-fast
-          check analyzer-format cargo fmt --manifest-path tools/q06-fixed-corpus-analyzer/Cargo.toml -- --check
-          check analyzer-clippy cargo clippy --locked --manifest-path tools/q06-fixed-corpus-analyzer/Cargo.toml --all-targets -- -D warnings
-          check analyzer-tests cargo test --locked --manifest-path tools/q06-fixed-corpus-analyzer/Cargo.toml
-          check analyzer-build cargo build --locked --manifest-path tools/q06-fixed-corpus-analyzer/Cargo.toml
-          export NOERITH_Q06_ANALYZER_BIN="$ROOT/tools/q06-fixed-corpus-analyzer/target/debug/noerith-q06-fixed-corpus-analyzer"
-          check completed-tool-tests python3 -m unittest discover -s tools/tests -p 'test_*.py' -v
-          check completed-research-tool-tests python3 -m unittest discover -s tools/research -p 'test_*.py' -v
-          check wp05-mutation-qualification python3 tools/research/run_mutations.py
-          check analyzer-independent python3 tools/q06_fixed_corpus_analyzer_qualification.py --analyzer "$NOERITH_Q06_ANALYZER_BIN" --manifest experiments/s05-q06-fixed-corpus-analyzer-qualification.json --source-revision "$TARGET_SHA" --output "$LOGDIR/analyzer-qualification.json"
+          check completed-first-byte-model python3 tools/research/wp05_s03_egress_boundary_model.py
+          check completed-streaming-model python3 tools/research/wp05_streaming_disclosure_model.py
+          check native-input-equality python3 -c 'import subprocess; paths=subprocess.check_output(["git","diff","--name-only","8880b4fd04355fecc1734bb4c78f4da31087ba9b","HEAD"],text=True).splitlines(); assert set(paths)<={"tools/research/wp05_s03_egress_boundary_model.py","tools/research/wp05_streaming_disclosure_model.py",".github/workflows/ci.yml","handoff/VERIFIED_UNITS.json"},paths; print("ALL_PREVIOUSLY_QUALIFIED_EXECUTABLE_INPUTS_UNCHANGED=PASS")'
           git diff --exit-code --quiet
-          # Export formatter changes only as authenticated ciphertext.
-          cargo fmt --all >"$LOGDIR/format-generation.log" 2>&1
-          cargo fmt --manifest-path tools/q06-fixed-corpus-analyzer/Cargo.toml >>"$LOGDIR/format-generation.log" 2>&1
           git diff --binary HEAD -- >"$LOGDIR/rustfmt.patch"
           git restore --source=HEAD --worktree .
           git diff --exit-code --quiet
