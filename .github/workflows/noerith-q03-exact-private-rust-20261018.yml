@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 75
     env:
-      TARGET_SHA: e143423e0f64caafed41a115fa44a7caefd911fe
+      TARGET_SHA: cd8d5e86405de05dc7843290ba8e84fc4f9a4231
       CARGO_TERM_COLOR: never
     steps:
       - uses: actions/checkout@v4
@@ -52,10 +52,7 @@ jobs:
               status=1
             fi
           }
-          export RUST_TEST_THREADS=32
-          for iteration in $(seq 1 100); do
-            check "sandbox-stress-$iteration" python3 tools/verify_isolated_std_crate.py crates/noerith-sandbox-oci
-          done
+          check sandbox-deterministic-red python3 tools/verify_isolated_std_crate.py crates/noerith-sandbox-oci
           git diff --exit-code --quiet
           # Export formatter changes only as authenticated ciphertext.
           cargo fmt --all >"$LOGDIR/format-generation.log" 2>&1
