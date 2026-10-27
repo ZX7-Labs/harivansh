@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 75
     env:
-      TARGET_SHA: 97e53aa8b3144d5fa2dee31f8508f477ccfb78dd
+      TARGET_SHA: 852d05075d7af22cfac283f42d5ceb97170c9733
       CARGO_TERM_COLOR: never
     steps:
       - uses: actions/checkout@v4
@@ -54,6 +54,9 @@ jobs:
               status=1
             fi
           }
+          check workspace-format cargo fmt --all -- --check
+          check workspace-clippy cargo clippy --locked --workspace --all-targets -- -D warnings
+          check workspace-tests cargo test --locked --workspace --no-fail-fast
           check import-mutation cargo test --locked -p noerith-storage --test q03_import_mutation -- --nocapture
           git diff --exit-code --quiet
           # Export formatter changes only as authenticated ciphertext.
