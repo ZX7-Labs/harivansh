@@ -1,0 +1,49 @@
+name: Source free pinned Rust bootstrap
+on:
+  push:
+    branches: [build/noerith-q03-isolated-verification-20261018]
+    paths: [.github/workflows/sourcefree-pinned-bootstrap.yml]
+permissions:
+  contents: read
+jobs:
+  bootstrap:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Assemble public compiler and registry inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          export CARGO_HOME="$RUNNER_TEMP/bootstrap/cargo"
+          export RUSTUP_HOME="$RUNNER_TEMP/bootstrap/rustup"
+          mkdir -p "$CARGO_HOME" "$RUSTUP_HOME" "$RUNNER_TEMP/public-probe/src"
+          rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy --no-self-update
+          export PATH="$RUSTUP_HOME/toolchains/1.98.1-x86_64-unknown-linux-gnu/bin:$PATH"
+          cat >"$RUNNER_TEMP/public-probe/Cargo.toml" <<'TOML'
+          [package]
+          name = "public-dependency-probe"
+          version = "0.1.0"
+          edition = "2024"
+          [dependencies]
+          serde = { version = "=1.0.229", features = ["derive"] }
+          serde_json = "=1.0.151"
+          sha2 = "=0.11.0"
+          rusqlite = { version = "=0.40.2", features = ["bundled-sqlcipher-vendored-openssl", "backup"] }
+          chacha20poly1305 = { version = "=0.11.0", features = ["zeroize"] }
+          zeroize = "=1.9.0"
+          TOML
+          printf 'pub fn public_probe() {}\n' >"$RUNNER_TEMP/public-probe/src/lib.rs"
+          cargo fetch --manifest-path "$RUNNER_TEMP/public-probe/Cargo.toml"
+          rustc --version >"$RUNNER_TEMP/bootstrap/identity.txt"
+          cargo --version >>"$RUNNER_TEMP/bootstrap/identity.txt"
+          find "$CARGO_HOME" -name .global-cache -delete
+          tar -C "$RUNNER_TEMP/bootstrap" -czf "$RUNNER_TEMP/sourcefree-bootstrap.tar.gz" .
+          sha256sum "$RUNNER_TEMP/sourcefree-bootstrap.tar.gz" >"$RUNNER_TEMP/sourcefree-bootstrap.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sourcefree-pinned-rust-1.98.1
+          path: |
+            ${{ runner.temp }}/sourcefree-bootstrap.tar.gz
+            ${{ runner.temp }}/sourcefree-bootstrap.sha256
+          if-no-files-found: error
+          retention-days: 1
